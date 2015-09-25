@@ -17,5 +17,8 @@
     "github": "^0.2.4",
     "promise": "^7.0.4"
   },
-  "main": "lib/index"
+  "main": "lib/index",
+  "scripts": {
+    "test": "gulp test"
+  }
 }

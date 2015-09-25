@@ -18,8 +18,7 @@ export default class BuildBot {
     }
 
     _runServer () {
-        var app    = express();
-        var server = null;
+        var app = express();
 
         app.use(bodyParser.json());
 
@@ -41,11 +40,8 @@ export default class BuildBot {
             res.end();
         });
 
-        server = app.listen(1800, () => {
-            var host = server.address().address;
-            var port = server.address().port;
-
-            process.stdout.writeLine('Build bot service listening at http://%s:%s', host, port);
+        app.listen(this.port, () => {
+            process.stdout.write(`Build bot service listening at http://localhost:${this.port}`);
         });
     }
 }
