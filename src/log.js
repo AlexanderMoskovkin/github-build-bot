@@ -5,7 +5,7 @@ var LOG_PATH   = path.join(__dirname, '../log.txt');
 var STATE_PATH = path.join(__dirname, '../state.json');
 
 export function log (msg) {
-    process.stdout.write.log(msg);
+    process.stdout.write(msg);
     fs.appendFileSync(LOG_PATH, new Date().toLocaleString() + ': ' + msg + '\r\n', 'utf-8');
 }
 
