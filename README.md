@@ -1,3 +1,3 @@
 # saucelabs-build-bot
 
-https://travis-ci.org/AlexanderMoskovkin/test-repo.svg
+[![Build Status](https://travis-ci.org/AlexanderMoskovkin/github-build-bot.svg?branch=master)](https://travis-ci.org/AlexanderMoskovkin/github-build-bot)
