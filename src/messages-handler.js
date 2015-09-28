@@ -11,6 +11,27 @@ export default class MessagesHandler {
         this.SYNCHRONIZE_TIMEOUT = 5 * 60 * 1000;
     }
 
+    _saveState () {
+        var prs   = Object.keys(this.state.openedPullRequests);
+        var state = {
+            openedPullRequests: {}
+        };
+
+        for (var i = 0; i < prs.length; i++) {
+            var pr    = this.state.openedPullRequests[prs[i]];
+            var clone = {};
+
+            for (var field in pr) {
+                if (pr.hasOwnProperty(field) && field !== 'syncTimeout')
+                    clone[field] = pr[field];
+            }
+
+            state.openedPullRequests[prs[i]] = clone;
+        }
+
+        saveState(state);
+    }
+
     _getPRName (repo, id) {
         return `${repo}/${id}`;
     }
@@ -27,17 +48,18 @@ export default class MessagesHandler {
         return prId ? this.state.openedPullRequests[prId] : null;
     }
 
-    _onPROpened (repo, prNumber, prSha, branchName) {
+    _onPROpened (repo, prNumber, prSha, branchName, owner) {
         var existedPr = this.state.openedPullRequests[this._getPRName(repo, prNumber)];
         var pr        = existedPr || {};
 
         pr.number = prNumber;
         pr.sha    = prSha;
         pr.repo   = repo;
+        pr.owner  = owner;
 
         this.state.openedPullRequests[this._getPRName(repo, prNumber)] = pr;
 
-        saveState(this.state);
+        this._saveState();
 
         if (existedPr)
             this.github.syncBranchWithCommit(repo, branchName, prSha);
@@ -47,7 +69,7 @@ export default class MessagesHandler {
 
     _onPRClosed (repo, prNumber, branchName) {
         delete this.state.openedPullRequests[this._getPRName(repo, prNumber)];
-        saveState(this.state);
+        this._saveState();
 
         this.github.deleteBranch(repo, branchName);
     }
@@ -72,12 +94,12 @@ export default class MessagesHandler {
 
         pr.syncTimeout = setTimeout(() => {
             delete pr.syncTimeout;
-            saveState(this.state);
+            this._saveState();
 
             this.github.syncBranchWithCommit(repo, branchName, sha);
         }, this.SYNCHRONIZE_TIMEOUT);
 
-        saveState(this.state);
+        this._saveState();
     }
 
     _onPRMessage (body) {
@@ -92,7 +114,7 @@ export default class MessagesHandler {
         var testBranchName = 'rp-' + prId;
 
         if (/opened/.test(body.action))
-            this._onPROpened(repo, prNumber, prSha, testBranchName);
+            this._onPROpened(repo, prNumber, prSha, testBranchName, owner);
 
         if (body.action === 'closed')
             this._onPRClosed(repo, prNumber, testBranchName);
@@ -108,26 +130,27 @@ export default class MessagesHandler {
         if (!/continuous-integration\/travis-ci\//.test(body.context))
             return;
 
-        var owner = body.repository.owner.login;
-        var repo  = body.repository.name;
+        var repo = body.repository.name;
 
         var pr = this._getPRBySha(repo, body.sha);
 
         if (!pr)
             return;
 
+        var owner = pr.owner;
+
         if (body.state === 'pending') {
             if (!pr.runningTest) {
                 pr.runningTest = body.sha;
 
-                saveState(this.state);
+                this._saveState();
 
                 this.github.createPullRequestComment(repo, pr.number,
                     `Tests for the commit ${body.sha} have started. See [details](${body.target_url}).`,
                     owner)
                     .then(commentId => {
                         pr.currentTestCommentId = commentId;
-                        saveState(this.state);
+                        this._saveState();
                     });
             }
 
@@ -150,7 +173,7 @@ export default class MessagesHandler {
 
         pr.currentTestCommentId = null;
 
-        saveState(this.state);
+        this._saveState();
     }
 
     handle (message) {

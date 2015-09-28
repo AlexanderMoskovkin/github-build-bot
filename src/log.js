@@ -4,8 +4,10 @@ import fs from 'fs';
 var LOG_PATH   = path.join(__dirname, '../log.txt');
 var STATE_PATH = path.join(__dirname, '../state.json');
 
-export function log (msg) {
-    process.stdout.write(msg);
+export function log (...msgs) {
+    var msg = msgs.join(' ');
+
+    process.stdout.write(msg + '\r\n');
     fs.appendFileSync(LOG_PATH, new Date().toLocaleString() + ': ' + msg + '\r\n', 'utf-8');
 }
 
