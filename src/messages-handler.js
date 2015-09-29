@@ -149,7 +149,7 @@ export default class MessagesHandler {
 
                 this._saveState();
 
-                this.github.createStatus(repo, body.sha, 'pending', body.target_url, TRAVIS_MESSAGES.progress, this.bot.name);
+                this.github.createStatus(repo, owner, body.sha, 'pending', body.target_url, TRAVIS_MESSAGES.progress, this.bot.name);
             }
 
             return;
@@ -166,7 +166,7 @@ export default class MessagesHandler {
         var status  = success ? 'passed' : 'failed';
         var emoji   = success ? ':white_check_mark:' : ':x:';
 
-        this.github.createStatus(repo, body.sha, body.state, body.target_url,
+        this.github.createStatus(repo, owner, body.sha, body.state, body.target_url,
             success ? TRAVIS_MESSAGES.passed : TRAVIS_MESSAGES.failed, this.bot.name)
             .then(() => {
                 this.github.createPullRequestComment(repo, pr.number,

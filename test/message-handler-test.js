@@ -139,9 +139,10 @@ describe('Message handler', function () {
         var expectedDescriptions = ['The Travis CI build is in progress', 'The Travis CI build passed'].join(' ');
         var descriptions         = [];
 
-        GitHub.prototype.createStatus = function (repo, sha, state, targetUrl, description, context) {
+        GitHub.prototype.createStatus = function (repo, owner, sha, state, targetUrl, description, context) {
             try {
                 expect(repo).eql('repo1');
+                expect(owner).eql('repo1Owner');
                 expect(sha).eql('sha1');
                 expect(targetUrl).eql('url1');
                 expect(context).eql('botName');
@@ -208,7 +209,7 @@ describe('Message handler', function () {
 
         mh.SYNCHRONIZE_TIMEOUT = synchronizeTimeout;
 
-        GitHub.prototype.createStatus = function (repo, sha, state) {
+        GitHub.prototype.createStatus = function (repo, owner, sha, state) {
             try {
                 states.push(state);
 

@@ -167,11 +167,11 @@ export default class GitHub {
         return makePromise(this.github.gitdata, this.github.gitdata.updateReference, [msg]);
     }
 
-    async createStatus (repo, sha, state, targetUrl, description, context) {
-        log('createStatus', repo, sha, state, targetUrl, description, context);
+    async createStatus (repo, owner, sha, state, targetUrl, description, context) {
+        log('createStatus', repo, owner, sha, state, targetUrl, description, context);
 
         var msg = {
-            user:         this.user,
+            user:         owner || this.user,
             repo:         repo,
             sha:          sha,
             state:        state,
