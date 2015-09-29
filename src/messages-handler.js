@@ -2,6 +2,14 @@ import GitHub from './github';
 import GITHUB_MESSAGE_TYPES from './github-message-types';
 import { log, saveState }from './log';
 
+
+const TRAVIS_MESSAGES = {
+    progress: 'The Travis CI build is in progress',
+    passed:   'The Travis CI build passed',
+    failed:   'The Travis CI build failed'
+};
+
+
 export default class MessagesHandler {
     constructor (bot, state) {
         this.bot    = bot;
@@ -74,16 +82,12 @@ export default class MessagesHandler {
         this.github.deleteBranch(repo, branchName);
     }
 
-    _onPRSynchronized (repo, prNumber, branchName, sha, owner) {
+    _onPRSynchronized (repo, prNumber, branchName, sha) {
         var pr = this.state.openedPullRequests[this._getPRName(repo, prNumber)];
 
         if (!pr)
             return;
 
-        if (pr.currentTestCommentId)
-            this.github.deleteComment(repo, pr.currentTestCommentId, owner);
-
-        delete pr.currentTestCommentId;
         delete pr.runningTest;
         pr.sha = sha;
 
@@ -120,7 +124,7 @@ export default class MessagesHandler {
             this._onPRClosed(repo, prNumber, testBranchName);
 
         if (body.action === 'synchronize')
-            this._onPRSynchronized(repo, prNumber, testBranchName, prSha, owner);
+            this._onPRSynchronized(repo, prNumber, testBranchName, prSha);
 
     }
 
@@ -145,12 +149,11 @@ export default class MessagesHandler {
 
                 this._saveState();
 
-                this.github.createPullRequestComment(repo, pr.number,
-                    `Tests for the commit ${body.sha} have started. See [details](${body.target_url}).`,
-                    owner)
-                    .then(commentId => {
-                        pr.currentTestCommentId = commentId;
-                        this._saveState();
+                this.github.createStatus(repo, body.sha, 'pending', body.target_url, TRAVIS_MESSAGES.progress, this.bot.name)
+                    .then(() => {
+                        this.github.createPullRequestComment(repo, pr.number,
+                            `Tests for the commit ${body.sha} have started. See [details](${body.target_url}).`,
+                            owner);
                     });
             }
 
@@ -162,18 +165,19 @@ export default class MessagesHandler {
 
         pr.runningTest = null;
 
+        this._saveState();
+
         var success = body.state === 'success';
         var status  = success ? 'passed' : 'failed';
         var emoji   = success ? ':white_check_mark:' : ':x:';
 
-        this.github.deleteComment(repo, pr.currentTestCommentId, owner);
-        this.github.createPullRequestComment(repo, pr.number,
-            `${emoji} Tests for the commit ${pr.sha} have ${status}. See [details](${body.target_url}).`,
-            owner, repo);
-
-        pr.currentTestCommentId = null;
-
-        this._saveState();
+        this.github.createStatus(repo, body.sha, body.state, body.target_url,
+            success ? TRAVIS_MESSAGES.passed : TRAVIS_MESSAGES.failed, this.bot.name)
+            .then(() => {
+                this.github.createPullRequestComment(repo, pr.number,
+                    `${emoji} Tests for the commit ${pr.sha} have ${status}. See [details](${body.target_url}).`,
+                    owner, repo);
+            });
     }
 
     handle (message) {

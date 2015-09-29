@@ -71,7 +71,7 @@ function getTestMessage (state, repo, sha, url) {
                 name:  repo
             },
 
-            context: 'continuous-integration\/travis-ci\/'
+            context: 'continuous-integration/travis-ci/'
         }
     };
 }
@@ -91,11 +91,8 @@ describe('Message handler', function () {
         GitHub.prototype.editComment              = asyncFuncMock;
         GitHub.prototype.deleteComment            = asyncFuncMock;
         GitHub.prototype.syncBranchWithCommit     = asyncFuncMock;
+        GitHub.prototype.createStatus             = asyncFuncMock;
     });
-
-    afterEach(function () {
-    });
-
 
     // Tests
     it('Should create a branch on a PR opened', function (done) {
@@ -127,45 +124,35 @@ describe('Message handler', function () {
     });
 
     it('Should wait for tests after the pr opened', function (done) {
-        var startCommentCreatedCount = 0;
-        var startCommentDeleted      = false;
-        var startCommentId           = 'comment1';
+        var expectedPrStates     = ['pending', 'success'].join(' ');
+        var prStates             = [];
+        var expectedDescriptions = ['The Travis CI build is in progress', 'The Travis CI build passed'].join(' ');
+        var descriptions         = [];
+
+        GitHub.prototype.createStatus = function (repo, sha, state, targetUrl, description, context) {
+            expect(repo).eql('repo1');
+            expect(sha).eql('sha1');
+            expect(targetUrl).eql('url1');
+            expect(context).eql('botName');
+
+            prStates.push(state);
+            descriptions.push(description);
+
+            return asyncFuncMock();
+        };
 
         GitHub.prototype.createPullRequestComment = function (repo, prNumber, comment, owner) {
-            if (!startCommentCreatedCount) {
-                expect(prNumber).eql(1);
-                expect(comment.indexOf('started')).gt(-1);
-                expect(comment.indexOf('sha1')).gt(-1);
-                expect(comment.indexOf('url1')).gt(-1);
-                expect(owner).eql('repo1Owner');
-                expect(repo).eql('repo1');
-
-                startCommentCreatedCount++;
-
-                return new Promise(function (resolve) {
-                    resolve(startCommentId);
-                });
-            }
-
             expect(prNumber).eql(1);
             expect(comment.indexOf('pass')).gt(-1);
             expect(comment.indexOf('sha1')).gt(-1);
             expect(comment.indexOf('url1')).gt(-1);
             expect(owner).eql('repo1Owner');
             expect(repo).eql('repo1');
-            expect(startCommentCreatedCount).eql(1);
-            expect(startCommentDeleted).eql(true);
+
+            expect(prStates.join(' ')).eql(expectedPrStates);
+            expect(descriptions.join(' ')).eql(expectedDescriptions);
 
             done();
-        };
-
-        GitHub.prototype.deleteComment = function (repo, id, owner) {
-            expect(id).eql(startCommentId);
-            expect(owner).eql('repo1Owner');
-            expect(repo).eql('repo1');
-            startCommentDeleted = true;
-
-            return asyncFuncMock();
         };
 
         var mh = new MessagesHandler(botCredentials);
@@ -191,46 +178,35 @@ describe('Message handler', function () {
 
     it('Should restart the tests after branch was synchronized', function (done) {
         var synchronizeTimeout = 500;
-        var commentsCount      = 0;
+        var statusChangedCount = 0;
         var synchronizeTime    = null;
         var branchSynchronized = false;
+        var expectedStates     = ['pending', 'pending', 'success'].join(' ');
+        var states             = [];
 
         var mh = new MessagesHandler(botCredentials);
 
         mh.SYNCHRONIZE_TIMEOUT = synchronizeTimeout;
 
+        GitHub.prototype.createStatus = function (repo, sha, state) {
+            states.push(state);
+
+            if (!statusChangedCount)
+                expect(sha).eql('sha1');
+            else
+                expect(sha).eql('sha3');
+
+            statusChangedCount++;
+
+            return asyncFuncMock();
+        };
+
         GitHub.prototype.createPullRequestComment = function (repo, prNumber, comment) {
-            if (!commentsCount) {
-                commentsCount++;
-
-                return new Promise(function (resolve) {
-                    resolve('comment1');
-                });
-            }
-
-            if (commentsCount === 1) {
-                expect(comment.indexOf('started')).gt(-1);
-                expect(comment.indexOf('sha3')).gt(-1);
-                commentsCount++;
-
-                return new Promise(function (resolve) {
-                    resolve('comment2');
-                });
-            }
-
+            expect(states.join(' ')).eql(expectedStates);
             expect(comment.indexOf('pass')).gt(-1);
             expect(comment.indexOf('sha3')).gt(-1);
             expect(branchSynchronized).eql(true);
             done();
-        };
-
-        GitHub.prototype.deleteComment = function (repo, id) {
-            if (commentsCount === 1)
-                expect(id).eql('comment1');
-            else if (commentsCount === 2)
-                expect(id).eql('comment2');
-            else
-                throw 'should not delete the third comment';
         };
 
         GitHub.prototype.syncBranchWithCommit = function (repo, branchName, commitSha) {
