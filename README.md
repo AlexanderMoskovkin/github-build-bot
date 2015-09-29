@@ -7,9 +7,9 @@
 
 ##Usage
 ```js
-var GitHubBot = require('build-bot-github-name');
+var GitHubBot = require('github-build-bot');
 
-var BUILD_BOT_GITHUB_NAME  = 'some-build-bot';
+var BUILD_BOT_GITHUB_NAME  = 'github-build-bot-name';
 var BUILD_BOT_GITHUB_TOKEN = 'abcde12345abcde12345abcde12345abcde12345';
 var SERVER_PORT            = '1800';
 
