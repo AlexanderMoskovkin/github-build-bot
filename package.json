@@ -1,6 +1,6 @@
 {
   "name": "github-build-bot",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "devDependencies": {
     "chai": "^3.3.0",
     "del": "^2.0.2",

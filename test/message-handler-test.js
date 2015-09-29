@@ -97,11 +97,16 @@ describe('Message handler', function () {
     // Tests
     it('Should create a branch on a PR opened', function (done) {
         GitHub.prototype.createBranch = function (repo, baseSha, branchName) {
-            expect(repo).eql('repo1');
-            expect(baseSha).eql('sha1');
-            expect(branchName).eql('rp-pr1');
+            try {
+                expect(repo).eql('repo1');
+                expect(baseSha).eql('sha1');
+                expect(branchName).eql('rp-pr1');
 
-            done();
+                done();
+            }
+            catch (err) {
+                done(err);
+            }
         };
 
         var mh = new MessagesHandler(botCredentials);
@@ -111,10 +116,15 @@ describe('Message handler', function () {
 
     it('Should remove the branch on the PR closed', function (done) {
         GitHub.prototype.deleteBranch = function (repo, branchName) {
-            expect(repo).eql('repo1');
-            expect(branchName).eql('rp-pr1');
+            try {
+                expect(repo).eql('repo1');
+                expect(branchName).eql('rp-pr1');
 
-            done();
+                done();
+            }
+            catch (err) {
+                done(err);
+            }
         };
 
         var mh = new MessagesHandler(botCredentials);
@@ -130,29 +140,39 @@ describe('Message handler', function () {
         var descriptions         = [];
 
         GitHub.prototype.createStatus = function (repo, sha, state, targetUrl, description, context) {
-            expect(repo).eql('repo1');
-            expect(sha).eql('sha1');
-            expect(targetUrl).eql('url1');
-            expect(context).eql('botName');
+            try {
+                expect(repo).eql('repo1');
+                expect(sha).eql('sha1');
+                expect(targetUrl).eql('url1');
+                expect(context).eql('botName');
 
-            prStates.push(state);
-            descriptions.push(description);
+                prStates.push(state);
+                descriptions.push(description);
 
-            return asyncFuncMock();
+                return asyncFuncMock();
+            }
+            catch (err) {
+                done(err);
+            }
         };
 
         GitHub.prototype.createPullRequestComment = function (repo, prNumber, comment, owner) {
-            expect(prNumber).eql(1);
-            expect(comment.indexOf('pass')).gt(-1);
-            expect(comment.indexOf('sha1')).gt(-1);
-            expect(comment.indexOf('url1')).gt(-1);
-            expect(owner).eql('repo1Owner');
-            expect(repo).eql('repo1');
+            try {
+                expect(prNumber).eql(1);
+                expect(comment.indexOf('pass')).gt(-1);
+                expect(comment.indexOf('sha1')).gt(-1);
+                expect(comment.indexOf('url1')).gt(-1);
+                expect(owner).eql('repo1Owner');
+                expect(repo).eql('repo1');
 
-            expect(prStates.join(' ')).eql(expectedPrStates);
-            expect(descriptions.join(' ')).eql(expectedDescriptions);
+                expect(prStates.join(' ')).eql(expectedPrStates);
+                expect(descriptions.join(' ')).eql(expectedDescriptions);
 
-            done();
+                done();
+            }
+            catch (err) {
+                done(err);
+            }
         };
 
         var mh = new MessagesHandler(botCredentials);
@@ -189,35 +209,50 @@ describe('Message handler', function () {
         mh.SYNCHRONIZE_TIMEOUT = synchronizeTimeout;
 
         GitHub.prototype.createStatus = function (repo, sha, state) {
-            states.push(state);
+            try {
+                states.push(state);
 
-            if (!statusChangedCount)
-                expect(sha).eql('sha1');
-            else
-                expect(sha).eql('sha3');
+                if (!statusChangedCount)
+                    expect(sha).eql('sha1');
+                else
+                    expect(sha).eql('sha3');
 
-            statusChangedCount++;
+                statusChangedCount++;
 
-            return asyncFuncMock();
+                return asyncFuncMock();
+            }
+            catch (err) {
+                done(err);
+            }
         };
 
         GitHub.prototype.createPullRequestComment = function (repo, prNumber, comment) {
-            expect(states.join(' ')).eql(expectedStates);
-            expect(comment.indexOf('pass')).gt(-1);
-            expect(comment.indexOf('sha3')).gt(-1);
-            expect(branchSynchronized).eql(true);
-            done();
+            try {
+                expect(states.join(' ')).eql(expectedStates);
+                expect(comment.indexOf('pass')).gt(-1);
+                expect(comment.indexOf('sha3')).gt(-1);
+                expect(branchSynchronized).eql(true);
+                done();
+            }
+            catch (err) {
+                done(err);
+            }
         };
 
         GitHub.prototype.syncBranchWithCommit = function (repo, branchName, commitSha) {
-            branchSynchronized = true;
+            try {
+                branchSynchronized = true;
 
-            expect(Date.now() - synchronizeTime).least(synchronizeTimeout);
-            expect(repo).eql('repo1');
-            expect(branchName).eql('rp-pr1');
-            expect(commitSha).eql('sha3');
+                expect(Date.now() - synchronizeTime).least(synchronizeTimeout);
+                expect(repo).eql('repo1');
+                expect(branchName).eql('rp-pr1');
+                expect(commitSha).eql('sha3');
 
-            return asyncFuncMock();
+                return asyncFuncMock();
+            }
+            catch (err) {
+                done(err);
+            }
         };
 
         asyncFuncMock()
@@ -268,9 +303,14 @@ describe('Message handler', function () {
         };
 
         GitHub.prototype.syncBranchWithCommit = function (repo, branchName, commitSha) {
-            expect(commitSha).eql('sha2');
-            expect(branchCreated).eql(false);
-            done();
+            try {
+                expect(commitSha).eql('sha2');
+                expect(branchCreated).eql(false);
+                done();
+            }
+            catch (err) {
+                done(err);
+            }
         };
 
         mh.handle(getPrMessage('reopened', 'repo1', 1, '1', 'sha2'));
@@ -283,17 +323,21 @@ describe('Message handler', function () {
         var mh = new MessagesHandler(botCredentials);
 
         GitHub.prototype.createBranch = function () {
-            branchCreatedCount++;
+            try {
+                branchCreatedCount++;
 
-            if (branchCreatedCount === 2) {
-                expect(branchSynchronizedCount).eql(0);
+                if (branchCreatedCount === 2) {
+                    expect(branchSynchronizedCount).eql(0);
 
-                done();
-                return null;
+                    done();
+                    return null;
+                }
+
+                return asyncFuncMock();
             }
-
-            return asyncFuncMock();
-
+            catch (err) {
+                done(err);
+            }
         };
 
         GitHub.prototype.syncBranchWithCommit = function () {
@@ -312,22 +356,27 @@ describe('Message handler', function () {
         var branchCreatedCount = 0;
 
         GitHub.prototype.createBranch = function (repo, baseSha, branchName) {
-            if (!branchCreatedCount) {
-                branchCreatedCount++;
+            try {
+                if (!branchCreatedCount) {
+                    branchCreatedCount++;
 
-                expect(repo).eql('repo1');
+                    expect(repo).eql('repo1');
+                    expect(baseSha).eql('sha1');
+                    expect(branchName).eql('rp-pr1');
+
+                    return asyncFuncMock();
+                }
+
+                expect(repo).eql('repo2');
                 expect(baseSha).eql('sha1');
                 expect(branchName).eql('rp-pr1');
 
-                return asyncFuncMock();
+                expect(branchSynchronized).eql(false);
+                done();
             }
-
-            expect(repo).eql('repo2');
-            expect(baseSha).eql('sha1');
-            expect(branchName).eql('rp-pr1');
-
-            expect(branchSynchronized).eql(false);
-            done();
+            catch (err) {
+                done(err);
+            }
         };
 
         GitHub.prototype.syncBranchWithCommit = function () {

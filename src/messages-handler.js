@@ -149,12 +149,7 @@ export default class MessagesHandler {
 
                 this._saveState();
 
-                this.github.createStatus(repo, body.sha, 'pending', body.target_url, TRAVIS_MESSAGES.progress, this.bot.name)
-                    .then(() => {
-                        this.github.createPullRequestComment(repo, pr.number,
-                            `Tests for the commit ${body.sha} have started. See [details](${body.target_url}).`,
-                            owner);
-                    });
+                this.github.createStatus(repo, body.sha, 'pending', body.target_url, TRAVIS_MESSAGES.progress, this.bot.name);
             }
 
             return;
