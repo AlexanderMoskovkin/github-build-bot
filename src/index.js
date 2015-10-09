@@ -5,15 +5,22 @@ import GITHUB_MESSAGE_TYPES from './github-message-types';
 import { readState } from './log';
 
 export default class BuildBot {
-    constructor (botUsername, botOauthToken, webhooksPort) {
+    constructor (botUsername, botOauthToken, webhooksPort, collaboratorUsername, collaboratorOauthToken) {
         this.bot = {
             name:  botUsername,
             token: botOauthToken
         };
 
+        if (collaboratorUsername && collaboratorOauthToken) {
+            this.collaborator = {
+                name:  collaboratorUsername,
+                token: collaboratorOauthToken
+            };
+        }
+
         this.port = webhooksPort;
 
-        this.messagesHandler = new MessagesHandler(this.bot, readState());
+        this.messagesHandler = new MessagesHandler(this.bot, readState(), this.collaborator);
         this._runServer();
     }
 

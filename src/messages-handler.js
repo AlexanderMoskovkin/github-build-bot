@@ -11,10 +11,14 @@ const TRAVIS_MESSAGES = {
 
 
 export default class MessagesHandler {
-    constructor (bot, state) {
+    constructor (bot, state, collaborator) {
         this.bot    = bot;
         this.github = new GitHub(bot.name, bot.token);
-        this.state  = state || { openedPullRequests: {} };
+
+        if (collaborator)
+            this.collaboratorGithub = new GitHub(collaborator.name, collaborator.token);
+
+        this.state = state || { openedPullRequests: {} };
 
         this.SYNCHRONIZE_TIMEOUT = 5 * 60 * 1000;
     }
@@ -149,7 +153,8 @@ export default class MessagesHandler {
 
                 this._saveState();
 
-                this.github.createStatus(repo, owner, body.sha, 'pending', body.target_url, TRAVIS_MESSAGES.progress, this.bot.name);
+                (this.collaboratorGithub ||
+                 this.github).createStatus(repo, owner, body.sha, 'pending', body.target_url, TRAVIS_MESSAGES.progress, this.bot.name);
             }
 
             return;
@@ -166,7 +171,7 @@ export default class MessagesHandler {
         var status  = success ? 'passed' : 'failed';
         var emoji   = success ? ':white_check_mark:' : ':x:';
 
-        this.github.createStatus(repo, owner, body.sha, body.state, body.target_url,
+        (this.collaboratorGithub || this.github).createStatus(repo, owner, body.sha, body.state, body.target_url,
             success ? TRAVIS_MESSAGES.passed : TRAVIS_MESSAGES.failed, this.bot.name)
             .then(() => {
                 this.github.createPullRequestComment(repo, pr.number,

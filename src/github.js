@@ -26,7 +26,8 @@ export default class GitHub {
             timeout:  5000
         };
 
-        this.user = user;
+        this.user  = user;
+        this.token = oauthToken;
 
         this.github = new NodeGitHub(this.githubInitOptions);
         this.github.authenticate({

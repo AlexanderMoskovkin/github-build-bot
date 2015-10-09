@@ -30,6 +30,11 @@ var botCredentials = {
     token: 'botToken'
 };
 
+var collaboratorCredentials = {
+    name:  'collaborator',
+    token: 'collaboratorToken'
+};
+
 /*eslint-disable camelcase*/
 function getPrMessage (action, repo, id, number, sha) {
     return {
@@ -80,7 +85,9 @@ function getTestMessage (state, repo, sha, url) {
 describe('Message handler', function () {
     // Test setup/teardown
     beforeEach(function () {
-        GitHub.prototype = function () {
+        GitHub.prototype = function (user, oauthToken) {
+            this.user  = user;
+            this.token = oauthToken;
         };
 
         GitHub.prototype.createBranch             = asyncFuncMock;
@@ -146,6 +153,7 @@ describe('Message handler', function () {
                 expect(sha).eql('sha1');
                 expect(targetUrl).eql('url1');
                 expect(context).eql('botName');
+                expect(this.token).eql(collaboratorCredentials.token);
 
                 prStates.push(state);
                 descriptions.push(description);
@@ -165,6 +173,7 @@ describe('Message handler', function () {
                 expect(comment.indexOf('url1')).gt(-1);
                 expect(owner).eql('repo1Owner');
                 expect(repo).eql('repo1');
+                expect(this.token).eql(botCredentials.token);
 
                 expect(prStates.join(' ')).eql(expectedPrStates);
                 expect(descriptions.join(' ')).eql(expectedDescriptions);
@@ -176,7 +185,7 @@ describe('Message handler', function () {
             }
         };
 
-        var mh = new MessagesHandler(botCredentials);
+        var mh = new MessagesHandler(botCredentials, null, collaboratorCredentials);
 
         asyncFuncMock()
             .then(function () {
