@@ -34,7 +34,7 @@ export default class MessagesHandler {
             var clone = {};
 
             for (var field in pr) {
-                if (pr.hasOwnProperty(field) && field !== 'syncTimeout')
+                if (pr.hasOwnProperty(field) && field !== 'syncTimeout' && field !== 'waitForTestsTimeout')
                     clone[field] = pr[field];
             }
 
@@ -86,7 +86,38 @@ export default class MessagesHandler {
         this.github.deleteBranch(repo, branchName);
     }
 
-    _onPRSynchronized (repo, prNumber, branchName, sha) {
+    _waitForTestsStart (pr, repo, owner, sha, targetUrl) {
+        var handler = this;
+        var botName = this.bot.name;
+
+        if (pr.waitForTestsTimeout) {
+            clearTimeout(pr.waitForTestsTimeout);
+            pr.waitForTestsTimeout = null;
+        }
+
+        pr.timeToTests = Math.round(this.SYNCHRONIZE_TIMEOUT / 60000);
+
+        function setStatus (time) {
+            var message = `Tests have been triggered by a modification and will start in ${time} minute.`;
+
+            (handler.collaboratorGithub ||
+             handler.github).createStatus(repo, owner, sha, 'pending', targetUrl, message, botName);
+
+            if (time) {
+                pr.waitForTestsTimeout = setTimeout(() => {
+                    pr.waitForTestsTimeout = null;
+                    pr.timeToTests--;
+
+                    if (pr.timeToTests)
+                        setStatus(pr.timeToTests);
+                }, 60 * 1000);
+            }
+        }
+
+        setStatus(pr.timeToTests);
+    }
+
+    _onPRSynchronized (repo, prNumber, branchName, sha, owner, targetUrl) {
         var pr = this.state.openedPullRequests[this._getPRName(repo, prNumber)];
 
         if (!pr)
@@ -108,6 +139,7 @@ export default class MessagesHandler {
         }, this.SYNCHRONIZE_TIMEOUT);
 
         this._saveState();
+        this._waitForTestsStart(pr, repo, owner, sha, targetUrl);
     }
 
     _onPRMessage (body) {
@@ -128,7 +160,7 @@ export default class MessagesHandler {
             this._onPRClosed(repo, prNumber, testBranchName);
 
         if (body.action === 'synchronize')
-            this._onPRSynchronized(repo, prNumber, testBranchName, prSha);
+            this._onPRSynchronized(repo, prNumber, testBranchName, prSha, owner, body.target_url);
 
     }
 

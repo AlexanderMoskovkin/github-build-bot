@@ -83,6 +83,8 @@ function getTestMessage (state, repo, sha, url) {
 /*eslint-enable camelcase*/
 
 describe('Message handler', function () {
+    var mh = null;
+
     // Test setup/teardown
     beforeEach(function () {
         GitHub.prototype = function (user, oauthToken) {
@@ -101,6 +103,18 @@ describe('Message handler', function () {
         GitHub.prototype.createStatus             = asyncFuncMock;
     });
 
+    afterEach(function () {
+        var prs = Object.keys(mh.state.openedPullRequests).map(function (prKey) {
+            return mh.state.openedPullRequests[prKey];
+        });
+
+        prs.forEach(function (pr) {
+            clearInterval(pr.waitForTestsTimeout);
+        });
+
+        mh = null;
+    });
+
     // Tests
     it('Should create a branch on a PR opened', function (done) {
         GitHub.prototype.createBranch = function (repo, baseSha, branchName) {
@@ -116,7 +130,7 @@ describe('Message handler', function () {
             }
         };
 
-        var mh = new MessagesHandler(botCredentials);
+        mh = new MessagesHandler(botCredentials);
 
         mh.handle(getPrMessage('opened', 'repo1', 'pr1', 1, 'sha1'));
     });
@@ -134,7 +148,7 @@ describe('Message handler', function () {
             }
         };
 
-        var mh = new MessagesHandler(botCredentials);
+        mh = new MessagesHandler(botCredentials);
 
         mh.handle(getPrMessage('opened', 'repo1', 'pr1', 1, 'sha1'));
         mh.handle(getPrMessage('closed', 'repo1', 'pr1', 1, 'sha1'));
@@ -185,7 +199,7 @@ describe('Message handler', function () {
             }
         };
 
-        var mh = new MessagesHandler(botCredentials, null, collaboratorCredentials);
+        mh = new MessagesHandler(botCredentials, null, collaboratorCredentials);
 
         asyncFuncMock()
             .then(function () {
@@ -211,10 +225,10 @@ describe('Message handler', function () {
         var statusChangedCount = 0;
         var synchronizeTime    = null;
         var branchSynchronized = false;
-        var expectedStates     = ['pending', 'pending', 'success'].join(' ');
+        var expectedStates     = ['pending', 'pending', 'pending', 'pending', 'success'].join(' ');
         var states             = [];
 
-        var mh = new MessagesHandler(botCredentials);
+        mh = new MessagesHandler(botCredentials);
 
         mh.SYNCHRONIZE_TIMEOUT = synchronizeTimeout;
 
@@ -224,6 +238,8 @@ describe('Message handler', function () {
 
                 if (!statusChangedCount)
                     expect(sha).eql('sha1');
+                else if (statusChangedCount < 2)
+                    expect(sha).eql('sha2');
                 else
                     expect(sha).eql('sha3');
 
@@ -297,7 +313,7 @@ describe('Message handler', function () {
     it('Should get the state in the constructor', function (done) {
         var branchCreated = false;
 
-        var mh = new MessagesHandler(botCredentials, {
+        mh = new MessagesHandler(botCredentials, {
             openedPullRequests: {
                 'repo1/1': {
                     number: 1,
@@ -330,7 +346,7 @@ describe('Message handler', function () {
         var branchCreatedCount      = 0;
         var branchSynchronizedCount = 0;
 
-        var mh = new MessagesHandler(botCredentials);
+        mh = new MessagesHandler(botCredentials);
 
         GitHub.prototype.createBranch = function () {
             try {
@@ -395,7 +411,7 @@ describe('Message handler', function () {
             return asyncFuncMock();
         };
 
-        var mh = new MessagesHandler(botCredentials);
+        mh = new MessagesHandler(botCredentials);
 
         mh.handle(getPrMessage('opened', 'repo1', 'pr1', 1, 'sha1'));
         mh.handle(getPrMessage('opened', 'repo2', 'pr1', 1, 'sha1'));
