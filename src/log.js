@@ -1,8 +1,8 @@
 import path from 'path';
 import fs from 'fs';
 
-var LOG_PATH   = path.join(__dirname, '../log.txt');
-var STATE_PATH = path.join(__dirname, '../state.json');
+var LOG_PATH   = path.join(__dirname, '../../.build-bot-data/log.txt');
+var STATE_PATH = path.join(__dirname, '../../.build-bot-data/state.json');
 
 export function log (...msgs) {
     var msg = msgs.join(' ');
