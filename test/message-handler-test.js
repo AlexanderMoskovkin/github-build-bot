@@ -64,6 +64,33 @@ function getPrMessage (action, repo, id, number, sha) {
     };
 }
 
+function getIssueCommentMessage (action, repo, issueId, issueNumber, user, body) {
+    return {
+        type: GITHUB_MESSAGE_TYPES.issueComment,
+        body: {
+            action: action,
+
+            repository: {
+                owner: { login: 'repo1Owner' },
+                name:  repo
+            },
+
+            issue: {
+                id:     issueId,
+                number: issueNumber
+            },
+
+            comment: {
+                user: {
+                    login: user
+                },
+
+                body: body
+            }
+        }
+    };
+}
+
 function getTestMessage (state, repo, sha, url) {
     return {
         type: GITHUB_MESSAGE_TYPES.status,
@@ -101,6 +128,7 @@ describe('Message handler', function () {
         GitHub.prototype.deleteComment            = asyncFuncMock;
         GitHub.prototype.syncBranchWithCommit     = asyncFuncMock;
         GitHub.prototype.createStatus             = asyncFuncMock;
+        GitHub.prototype.isUserCollaborator       = asyncFuncMock;
     });
 
     afterEach(function () {
@@ -415,6 +443,49 @@ describe('Message handler', function () {
 
         mh.handle(getPrMessage('opened', 'repo1', 'pr1', 1, 'sha1'));
         mh.handle(getPrMessage('opened', 'repo2', 'pr1', 1, 'sha1'));
+    });
+
+
+    describe('build-bot commands', function () {
+        it('Restart tests on the \\retest command', function (done) {
+            mh = new MessagesHandler(botCredentials, null, collaboratorCredentials);
+
+            GitHub.prototype.syncBranchWithCommit = function (repo, branchName, commitSha) {
+                try {
+                    expect(repo).eql('repo1');
+                    expect(branchName).eql('rp-pr1');
+                    expect(commitSha).eql('sha1');
+                    done();
+                }
+                catch (err) {
+                    done(err);
+                }
+            };
+
+            GitHub.prototype.isUserCollaborator = function () {
+                return new Promise(function (resolve) {
+                    resolve(true);
+                });
+            };
+
+            asyncFuncMock()
+                .then(function () {
+                    mh.handle(getPrMessage('opened', 'repo1', 'pr1', 1, 'sha1'));
+                })
+                .then(wait(0))
+                .then(function () {
+                    mh.handle(getTestMessage('pending', 'repo1', 'sha1', 'url1'));
+                })
+                .then(wait(0))
+                .then(function () {
+                    mh.handle(getTestMessage('success', 'repo1', 'sha1', 'url1'));
+                })
+                .then(wait(0))
+                .then(function () {
+                    mh.handle(getIssueCommentMessage('created', 'repo1', 'pr1', 1,
+                        collaboratorCredentials.name, '@' + botCredentials.name + '  \\retest  '));
+                });
+        });
     });
 });
 

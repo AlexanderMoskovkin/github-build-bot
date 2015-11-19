@@ -37,6 +37,8 @@ export default class BuildBot {
                 type = GITHUB_MESSAGE_TYPES.pullRequest;
             else if (header === 'status')
                 type = GITHUB_MESSAGE_TYPES.status;
+            else if (header === 'issue_comment')
+                type = GITHUB_MESSAGE_TYPES.issueComment;
             else
                 type = GITHUB_MESSAGE_TYPES.default;
 

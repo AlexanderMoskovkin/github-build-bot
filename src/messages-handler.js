@@ -44,8 +44,12 @@ export default class MessagesHandler {
         saveState(state);
     }
 
-    _getPRName (repo, id) {
+    static _getPRName (repo, id) {
         return `${repo}/${id}`;
+    }
+
+    static _getTestBranchName (issueId) {
+        return 'rp-' + issueId;
     }
 
     _getPRBySha (repo, sha) {
@@ -61,7 +65,7 @@ export default class MessagesHandler {
     }
 
     _onPROpened (repo, prNumber, prSha, branchName, owner) {
-        var existedPr = this.state.openedPullRequests[this._getPRName(repo, prNumber)];
+        var existedPr = this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)];
         var pr        = existedPr || {};
 
         pr.number = prNumber;
@@ -69,7 +73,7 @@ export default class MessagesHandler {
         pr.repo   = repo;
         pr.owner  = owner;
 
-        this.state.openedPullRequests[this._getPRName(repo, prNumber)] = pr;
+        this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)] = pr;
 
         this._saveState();
 
@@ -80,7 +84,7 @@ export default class MessagesHandler {
     }
 
     _onPRClosed (repo, prNumber, branchName) {
-        delete this.state.openedPullRequests[this._getPRName(repo, prNumber)];
+        delete this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)];
         this._saveState();
 
         this.github.deleteBranch(repo, branchName);
@@ -118,7 +122,7 @@ export default class MessagesHandler {
     }
 
     _onPRSynchronized (repo, prNumber, branchName, sha, owner, targetUrl) {
-        var pr = this.state.openedPullRequests[this._getPRName(repo, prNumber)];
+        var pr = this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)];
 
         if (!pr)
             return;
@@ -151,7 +155,7 @@ export default class MessagesHandler {
         var prSha          = body.pull_request.head.sha;
         var prId           = body.pull_request.id;
         var prNumber       = body.number;
-        var testBranchName = 'rp-' + prId;
+        var testBranchName = MessagesHandler._getTestBranchName(prId);
 
         if (/opened/.test(body.action))
             this._onPROpened(repo, prNumber, prSha, testBranchName, owner);
@@ -212,11 +216,57 @@ export default class MessagesHandler {
             });
     }
 
+    _onIssueCommentMessage (body) {
+        if (body.action !== 'created')
+            return;
+
+        var owner = body.repository.owner.login;
+        var repo  = body.repository.name;
+        var pr    = this.state.openedPullRequests[MessagesHandler._getPRName(repo, body.issue.number)];
+
+        if (!pr)
+            return;
+
+        var commandHandler = this._getCommandHandler(body.comment.body);
+
+        if (!commandHandler)
+            return;
+
+        this.github.isUserCollaborator(repo, owner, body.comment.user.login)
+            .then(isCollaborator => {
+                if (isCollaborator)
+                    commandHandler(pr, body.issue.id);
+            });
+    }
+
+    _getCommandHandler (message) {
+        if (message.indexOf(`@${this.bot.name}`) < 0)
+            return null;
+
+        message = message.replace(`@${this.bot.name}`, '').replace(/\s/g, '');
+
+        var handlers = {
+            '\\retest': (pr, issueId) => {
+                if (pr.runningTest || pr.syncTimeout)
+                    return;
+
+                var prBranchName = MessagesHandler._getTestBranchName(issueId);
+
+                this.github.syncBranchWithCommit(pr.repo, prBranchName, pr.sha);
+            }
+        };
+
+        return handlers[message] || null;
+    }
+
     handle (message) {
         if (message.type === GITHUB_MESSAGE_TYPES.pullRequest)
             this._onPRMessage(message.body);
 
         if (message.type === GITHUB_MESSAGE_TYPES.status)
             this._onStatusMessage(message.body);
+
+        if (message.type === GITHUB_MESSAGE_TYPES.issueComment)
+            this._onIssueCommentMessage(message.body);
     }
 }

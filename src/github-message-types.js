@@ -1,5 +1,6 @@
 export default {
-    pullRequest: 'pullRequest',
-    status:      'status',
-    default:     'default'
+    pullRequest:  'pullRequest',
+    status:       'status',
+    issueComment: 'issueComment',
+    default:      'default'
 };

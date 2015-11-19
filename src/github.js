@@ -183,4 +183,22 @@ export default class GitHub {
 
         return makePromise(this.github, this.github.statuses.create, [msg]);
     }
+
+    async isUserCollaborator (repo, owner, user) {
+        log('isUserCollaborator', repo, owner, user);
+
+        var msg = {
+            repo:       repo,
+            user:       owner,
+            collabuser: user
+        };
+
+        return makePromise(this.github, this.github.repos.getCollaborator, [msg])
+            .then(function () {
+                return true;
+            })
+            .catch(function () {
+                return false;
+            });
+    }
 }
