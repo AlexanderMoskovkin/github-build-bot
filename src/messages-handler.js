@@ -68,10 +68,11 @@ export default class MessagesHandler {
         var existedPr = this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)];
         var pr        = existedPr || {};
 
-        pr.number = prNumber;
-        pr.sha    = prSha;
-        pr.repo   = repo;
-        pr.owner  = owner;
+        pr.number     = prNumber;
+        pr.sha        = prSha;
+        pr.repo       = repo;
+        pr.owner      = owner;
+        pr.branchName = branchName;
 
         this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)] = pr;
 
@@ -235,7 +236,7 @@ export default class MessagesHandler {
         this.github.isUserCollaborator(repo, owner, body.comment.user.login)
             .then(isCollaborator => {
                 if (isCollaborator)
-                    commandHandler(pr, body.issue.id);
+                    commandHandler(pr);
             });
     }
 
@@ -246,13 +247,11 @@ export default class MessagesHandler {
         message = message.replace(`@${this.bot.name}`, '').replace(/\s/g, '');
 
         var handlers = {
-            '\\retest': (pr, issueId) => {
+            '\\retest': (pr) => {
                 if (pr.runningTest || pr.syncTimeout)
                     return;
 
-                var prBranchName = MessagesHandler._getTestBranchName(issueId);
-
-                this.github.syncBranchWithCommit(pr.repo, prBranchName, pr.sha);
+                this.github.syncBranchWithCommit(pr.repo, pr.branchName, pr.sha);
             }
         };
 

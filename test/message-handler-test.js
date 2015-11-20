@@ -482,7 +482,7 @@ describe('Message handler', function () {
                 })
                 .then(wait(0))
                 .then(function () {
-                    mh.handle(getIssueCommentMessage('created', 'repo1', 'pr1', 1,
+                    mh.handle(getIssueCommentMessage('created', 'repo1', '123', 1,
                         collaboratorCredentials.name, '@' + botCredentials.name + '  \\retest  '));
                 });
         });
