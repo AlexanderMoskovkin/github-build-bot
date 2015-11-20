@@ -15,3 +15,11 @@ var SERVER_PORT            = '1800';
 
 new GitHubBot(BUILD_BOT_GITHUB_NAME, BUILD_BOT_GITHUB_TOKEN, SERVER_PORT);
 ```
+
+##Build Bot commands
+`@<build-bot-name> \<command>`
+
+###Supported commands
+```js
+@<build-bot-name> \retest    //rerun tests for the current pull request
+```
