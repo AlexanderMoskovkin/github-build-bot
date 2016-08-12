@@ -201,4 +201,71 @@ export default class GitHub {
                 return false;
             });
     }
+
+    async getContent (repo, user, filePath, branch) {
+        var msg = {
+            repo:   repo,
+            user:   user,
+            path:   filePath,
+            branch: branch || 'master'
+        };
+
+        return makePromise(this.github, this.github.repos.getContent, [msg])
+            .then(function (res) {
+                return res.content;
+            });
+    }
+
+    // Returns the sha of the replacing commit
+    async replaceFile (repo, filePath, newFilePath, branch, commitMessage) {
+        var oldFileSha = null;
+
+        var getOldFileContentMsg = {
+            repo: repo,
+            user: this.user,
+            path: filePath,
+            ref:  branch || 'master'
+        };
+
+        return makePromise(this.github, this.github.repos.getContent, [getOldFileContentMsg])
+            .then(res => {
+                oldFileSha = res.sha;
+
+                var getNewContentMsg = {
+                    repo: repo,
+                    user: this.user,
+                    path: newFilePath,
+                    ref:  branch || 'master'
+                };
+
+                return makePromise(this.github, this.github.repos.getContent, [getNewContentMsg]);
+            })
+            .then(res => {
+                var newContent = res.content;
+
+                var updateFileMsg = {
+                    repo:    repo,
+                    user:    this.user,
+                    branch:  branch || 'master',
+                    path:    filePath,
+                    message: commitMessage,
+                    content: newContent,
+                    sha:     oldFileSha
+                };
+
+                return makePromise(this.github, this.github.repos.updateFile, [updateFileMsg])
+                    .then(updatingRes => updatingRes.commit.sha);
+            });
+    }
+
+    async getCommitMessage (repo, user, sha) {
+        var msg = {
+            repo: repo,
+            user: user,
+            sha:  sha
+        };
+
+        return makePromise(this.github, this.github.repos.getCommit, [msg])
+            .then(res => res.commit.message);
+    }
 }

@@ -56,7 +56,8 @@ function getPrMessage (action, repo, id, number, sha) {
                     sha: sha
                 },
 
-                id: id
+                id:    id,
+                title: 'title'
             },
 
             number: number
@@ -77,7 +78,8 @@ function getIssueCommentMessage (action, repo, issueId, issueNumber, user, body)
 
             issue: {
                 id:     issueId,
-                number: issueNumber
+                number: issueNumber,
+                title:  'title'
             },
 
             comment: {

@@ -52,43 +52,106 @@ export default class MessagesHandler {
         return 'rp-' + issueId;
     }
 
+    static _getTemporaryBranchName (branchName) {
+        return 'build-bot-temp-' + branchName;
+    }
+
     _getPRBySha (repo, sha) {
         var prNumbers = Object.keys(this.state.openedPullRequests);
 
         var prId = prNumbers.filter((id) => {
             var pr = this.state.openedPullRequests[id];
 
-            return pr.sha === sha && pr.repo === repo;
+            return (pr.sha === sha || pr.travisConfSha === sha) && pr.repo === repo;
         })[0];
 
         return prId ? this.state.openedPullRequests[prId] : null;
     }
 
-    _onPROpened (repo, prNumber, prSha, branchName, owner) {
+    _createBranch (repo, owner, prSha, branchName, travisConf, prNumber) {
+        if (!travisConf)
+            return this.github.createBranch(repo, prSha, branchName);
+
+        var temporaryBranchName = MessagesHandler._getTemporaryBranchName(branchName);
+
+        this.github.createBranch(repo, prSha, temporaryBranchName)
+            .then(() => this.github.getCommitMessage(repo, owner, prSha))
+            .then(commitMessage => {
+                return this.github.replaceFile(repo, '.travis.yml', `.travis-${travisConf}.yml`,
+                    temporaryBranchName, commitMessage);
+            })
+            .then(commitSha => {
+                this.github.createBranch(repo, commitSha, branchName);
+
+                var currentPr = this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)];
+
+                currentPr.travisConfSha = commitSha;
+
+                this._saveState();
+            });
+    }
+
+    _syncBranchWithCommit (repo, owner, branchName, prSha, travisConf, prNumber) {
+        if (!travisConf)
+            return this.github.syncBranchWithCommit(repo, branchName, prSha);
+
+        var temporaryBranchName = MessagesHandler._getTemporaryBranchName(branchName);
+
+        this.github.syncBranchWithCommit(repo, temporaryBranchName, prSha)
+            .then(() => this.github.getCommitMessage(repo, owner, prSha))
+            .then(commitMessage => {
+                return this.github.replaceFile(repo, '.travis.yml', `.travis-${travisConf}.yml`,
+                    temporaryBranchName, commitMessage);
+            })
+            .then(commitSha => {
+                this.github.syncBranchWithCommit(repo, branchName, commitSha);
+
+                var currentPr = this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)];
+
+                currentPr.travisConfSha = commitSha;
+
+                this._saveState();
+            });
+    }
+
+    _getTravisConf (prTitle) {
+        if (prTitle.indexOf('[docs]') > -1)
+            return 'docs';
+
+        return null;
+    }
+
+    _onPROpened (repo, prNumber, prSha, branchName, owner, title) {
         var existedPr = this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)];
         var pr        = existedPr || {};
 
-        pr.number     = prNumber;
-        pr.sha        = prSha;
-        pr.repo       = repo;
-        pr.owner      = owner;
-        pr.branchName = branchName;
+        pr.number        = prNumber;
+        pr.sha           = prSha;
+        pr.repo          = repo;
+        pr.owner         = owner;
+        pr.branchName    = branchName;
+        pr.travisConfSha = null;
 
         this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)] = pr;
 
         this._saveState();
 
         if (existedPr)
-            this.github.syncBranchWithCommit(repo, branchName, prSha);
+            this._syncBranchWithCommit(repo, owner, branchName, prSha, this._getTravisConf(title), prNumber);
         else
-            this.github.createBranch(repo, prSha, branchName);
+            this._createBranch(repo, owner, prSha, branchName, this._getTravisConf(title), prNumber);
     }
 
-    _onPRClosed (repo, prNumber, branchName) {
+    _onPRClosed (repo, prNumber, branchName, title) {
         delete this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)];
         this._saveState();
 
+        var travisConf = this._getTravisConf(title);
+
         this.github.deleteBranch(repo, branchName);
+
+        if (travisConf)
+            this.github.deleteBranch(repo, MessagesHandler._getTemporaryBranchName(branchName));
     }
 
     _waitForTestsStart (pr, repo, owner, sha, targetUrl) {
@@ -122,7 +185,7 @@ export default class MessagesHandler {
         setStatus(pr.timeToTests);
     }
 
-    _onPRSynchronized (repo, prNumber, branchName, sha, owner, targetUrl) {
+    _onPRSynchronized (repo, prNumber, branchName, sha, owner, targetUrl, title) {
         var pr = this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)];
 
         if (!pr)
@@ -140,7 +203,7 @@ export default class MessagesHandler {
             delete pr.syncTimeout;
             this._saveState();
 
-            this.github.syncBranchWithCommit(repo, branchName, sha);
+            this._syncBranchWithCommit(repo, owner, branchName, sha, this._getTravisConf(title), prNumber);
         }, this.SYNCHRONIZE_TIMEOUT);
 
         this._saveState();
@@ -155,17 +218,18 @@ export default class MessagesHandler {
         var repo           = body.repository.name;
         var prSha          = body.pull_request.head.sha;
         var prId           = body.pull_request.id;
+        var title          = body.pull_request.title;
         var prNumber       = body.number;
         var testBranchName = MessagesHandler._getTestBranchName(prId);
 
         if (/opened/.test(body.action))
-            this._onPROpened(repo, prNumber, prSha, testBranchName, owner);
+            this._onPROpened(repo, prNumber, prSha, testBranchName, owner, title);
 
         if (body.action === 'closed')
-            this._onPRClosed(repo, prNumber, testBranchName);
+            this._onPRClosed(repo, prNumber, testBranchName, title);
 
         if (body.action === 'synchronize')
-            this._onPRSynchronized(repo, prNumber, testBranchName, prSha, owner, body.target_url);
+            this._onPRSynchronized(repo, prNumber, testBranchName, prSha, owner, body.target_url, title);
 
     }
 
@@ -191,7 +255,7 @@ export default class MessagesHandler {
                 this._saveState();
 
                 (this.collaboratorGithub ||
-                 this.github).createStatus(repo, owner, body.sha, 'pending', body.target_url, TRAVIS_MESSAGES.progress, this.bot.name);
+                 this.github).createStatus(repo, owner, pr.sha, 'pending', body.target_url, TRAVIS_MESSAGES.progress, this.bot.name);
             }
 
             return;
@@ -208,7 +272,7 @@ export default class MessagesHandler {
         var status  = success ? 'passed' : 'failed';
         var emoji   = success ? ':white_check_mark:' : ':x:';
 
-        (this.collaboratorGithub || this.github).createStatus(repo, owner, body.sha, body.state, body.target_url,
+        (this.collaboratorGithub || this.github).createStatus(repo, owner, pr.sha, body.state, body.target_url,
             success ? TRAVIS_MESSAGES.passed : TRAVIS_MESSAGES.failed, this.bot.name)
             .then(() => {
                 this.github.createPullRequestComment(repo, pr.number,
@@ -228,7 +292,7 @@ export default class MessagesHandler {
         if (!pr)
             return;
 
-        var commandHandler = this._getCommandHandler(body.comment.body);
+        var commandHandler = this._getCommandHandler(body.comment.body, body.issue.title);
 
         if (!commandHandler)
             return;
@@ -240,7 +304,7 @@ export default class MessagesHandler {
             });
     }
 
-    _getCommandHandler (message) {
+    _getCommandHandler (message, title) {
         if (message.indexOf(`@${this.bot.name}`) < 0)
             return null;
 
@@ -251,7 +315,7 @@ export default class MessagesHandler {
                 if (pr.runningTest || pr.syncTimeout)
                     return;
 
-                this.github.syncBranchWithCommit(pr.repo, pr.branchName, pr.sha);
+                this._syncBranchWithCommit(pr.repo, pr.owner, pr.branchName, pr.sha, this._getTravisConf(title), pr.number);
             }
         };
 
