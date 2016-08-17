@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "no-unused-expressions": 0
+  },
+  "globals": {
+    "fixture": true,
+    "test": true,
+    "Promise": true
+  }
+}

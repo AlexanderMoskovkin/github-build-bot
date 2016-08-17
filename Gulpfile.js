@@ -22,6 +22,14 @@ gulp.task('build', ['clean', 'lint'], function () {
         .pipe(gulp.dest('./lib'));
 });
 
-gulp.task('test', ['build'], function () {
-
+gulp.task('test', function () {
+    /* eslint-disable */
+    return require('./test/index.js')('test/fixtures/pull-request/index-test.js')
+        .then(function () {
+            process.exit(0);
+        })
+        .catch(function () {
+            process.exit(1);
+        });
+    /* eslint-enable */
 });

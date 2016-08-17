@@ -1,32 +1,56 @@
+var createTestCafe     = require('testcafe');
+var config             = require('./config');
 var createNgrokConnect = require('./create-ngrok-connect');
-var BuildBot           = require('../lib');
 var Repository         = require('../lib/github/repository');
 
-var WEBHOOKS_PORT      = 1400;
-var ORG_USER_OAUTH_KEY = 'edc094db59816a1349f85b302d9c3c80bb72cbea';
-var USER               = 'gbb-organization';
-var REPO               = 'repository-1';
-var LISTENED_EVENTS    = ['pull_request'];
+var LISTENED_EVENTS = ['pull_request'];
 
-var bot  = new BuildBot(WEBHOOKS_PORT);
-var repo = new Repository(USER, REPO, ORG_USER_OAUTH_KEY);
-
-var webhookId = null;
+var webhookId        = null;
+var organizationRepo = new Repository(config.ORGANIZATION_USER, config.ORGANIZATION_REPO, config.ORG_USER_OAUTH_KEY);
 
 function setup () {
-    return createNgrokConnect(WEBHOOKS_PORT)
-        .then(url => repo.createWebhook(url, LISTENED_EVENTS))
-        .then(id => webhookId = id);
+    return createNgrokConnect(config.WEBHOOKS_PORT)
+        .then(function (url) {
+            return organizationRepo.createWebhook(url, LISTENED_EVENTS);
+        })
+        .then(function (id) {
+            webhookId = id;
+        });
 }
 
 function teardown () {
-    return repo.deleteWebhook(webhookId);
+    return organizationRepo.deleteWebhook(webhookId);
 }
 
-setup()
-    .then(() => {
-        return new Promise(resolve => {
-            setTimeout(resolve, 10000);
+var failedTests = 0;
+
+module.exports = function run (src) {
+    return setup()
+        .then(function () {
+            return createTestCafe();
+        })
+        .then(function (tc) {
+            return tc
+                .createRunner()
+                .src(src)
+                .browsers('chrome')
+                .run();
+        })
+        .catch(function (err) {
+            process.stderr.write(err + '\n');
+
+            return teardown()
+                .then(function () {
+                    throw new Error(err);
+                });
+        })
+        .then(function (failed) {
+            failedTests = failed;
+
+            return teardown();
+        })
+        .then(function () {
+            if (failedTests)
+                throw new Error('Tests are failed');
         });
-    })
-    .then(teardown);
+};

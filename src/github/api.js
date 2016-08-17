@@ -1,6 +1,7 @@
 import Promise from 'promise';
-import Github  from 'github';
+import Github from 'github';
 
+/*eslint-disable camelcase*/
 export default class GithubApi {
     constructor (oauthToken) {
         this.github = new Github({
@@ -21,15 +22,45 @@ export default class GithubApi {
         this.repos = this._createReposApi();
     }
 
+    _sendMsg (fn, msg) {
+        return Promise.denodeify(fn).call(this.github, msg);
+    }
+
     _createReposApi () {
-        var createHook = (user, repo, url, events) => {
+        var createHook = async (user, repo, url, events) => {
             var msg = { user, repo, name: 'web', config: { url, content_type: 'json' }, events, active: true };
 
-            return Promise.denodeify(this.github.repos.createHook).call(this.github, msg);
+            return await this._sendMsg(this.github.repos.createHook, msg);
         };
 
-        var deleteHook = (user, repo, id) => Promise.denodeify(github.repos.deleteHook).call(github, { user, repo, id });
+        var deleteHook = async (user, repo, id) => await this._sendMsg(this.github.repos.deleteHook, { user, repo, id });
 
-        return { createHook, deleteHook }
+        var getBranch = async (user, repo, name) => {
+            return await this._sendMsg(this.github.repos.getBranch, { user, repo, branch: name });
+        };
+
+        var createBranch = async (user, repo, name, sha) => {
+            return await this._sendMsg(this.github.gitdata.createReference, { user, repo, ref: `refs/heads/${name}`, sha });
+        };
+
+        var deleteBranch = async (user, repo, name) => {
+            return await this._sendMsg(this.github.gitdata.deleteReference, { user, repo, ref: `heads/${name}` });
+        };
+
+        var getContent = async (user, repo, branch, filePath) => {
+            return await this._sendMsg(this.github.repos.getContent, { user, repo, ref: branch, path: filePath });
+
+        };
+
+        var updateFile = async (user, repo, branch, filePath, message, content) => {
+            var oldContent = await getContent(user, repo, branch, filePath);
+            var fileSha    = oldContent.sha;
+            var msg        = { user, repo, branch, path: filePath, message, content, sha: fileSha };
+
+            return await this._sendMsg(this.github.repos.updateFile, msg);
+        };
+
+        return { createHook, deleteHook, getBranch, createBranch, deleteBranch, getContent, updateFile };
     }
 }
+/*eslint-enable camelcase*/

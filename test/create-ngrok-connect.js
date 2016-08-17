@@ -11,6 +11,6 @@ module.exports = function createNgrokConnect (port) {
                 reject(err);
             else
                 resolve(url + '/payload');
-        })
+        });
     });
 };

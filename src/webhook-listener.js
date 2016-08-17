@@ -45,4 +45,4 @@ export default class WebhookListener extends EventEmitter {
             process.stdout.write(`Build bot service listening at http://localhost: ${port}`);
         });
     }
-};
+}
