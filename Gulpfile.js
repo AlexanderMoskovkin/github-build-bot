@@ -21,3 +21,7 @@ gulp.task('build', ['clean', 'lint'], function () {
         .pipe(babel())
         .pipe(gulp.dest('./lib'));
 });
+
+gulp.task('test', ['build'], function () {
+
+});
