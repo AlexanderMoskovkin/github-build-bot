@@ -2,24 +2,41 @@ var createTestCafe     = require('testcafe');
 var config             = require('./config');
 var createNgrokConnect = require('./create-ngrok-connect');
 var Repository         = require('../lib/github/repository');
+var GithubBuildBot     = require('../lib');
+var Promise            = require('Promise');
 
 var LISTENED_EVENTS = ['pull_request'];
 
-var webhookId        = null;
-var organizationRepo = new Repository(config.ORGANIZATION_USER, config.ORGANIZATION_REPO, config.ORG_USER_OAUTH_KEY);
+var baseRepoWebhookId = null;
+var botRepoWebhookId  = null;
+var organizationRepo  = new Repository(config.ORGANIZATION_USER, config.ORGANIZATION_REPO, config.ORG_USER_OAUTH_KEY);
+var buildBotRepo      = new Repository(config.BUILD_BOT_USER, config.ORGANIZATION_REPO, config.BUILD_BOT_OAUTH_KEY);
+var buildBot          = null;
 
 function setup () {
     return createNgrokConnect(config.WEBHOOKS_PORT)
         .then(function (url) {
-            return organizationRepo.createWebhook(url, LISTENED_EVENTS);
+            return Promise.all([
+                organizationRepo.createWebhook(url, LISTENED_EVENTS),
+                buildBotRepo.createWebhook(url, ['status'])
+            ]);
+
         })
-        .then(function (id) {
-            webhookId = id;
+        .then(function (webhooks) {
+            baseRepoWebhookId = webhooks[0];
+            botRepoWebhookId  = webhooks[1];
+
+            buildBot = new GithubBuildBot(config.WEBHOOKS_PORT);
         });
 }
 
 function teardown () {
-    return organizationRepo.deleteWebhook(webhookId);
+    buildBot.close();
+
+    return Promise.all([
+        organizationRepo.deleteWebhook(baseRepoWebhookId),
+        buildBotRepo.deleteWebhook(botRepoWebhookId)
+    ]);
 }
 
 var failedTests = 0;

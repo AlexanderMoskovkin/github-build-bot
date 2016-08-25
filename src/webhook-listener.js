@@ -1,7 +1,6 @@
 import express from 'express';
 import bodyParser from 'body-parser';
 import { EventEmitter } from 'events';
-import MESSAGE_TYPE from './github-message-type';
 
 export default class WebhookListener extends EventEmitter {
     constructor (port) {
@@ -12,31 +11,9 @@ export default class WebhookListener extends EventEmitter {
         app.use(bodyParser.json());
 
         app.post('/payload', (req, res) => {
-            var header      = req.headers['x-github-event'];
-            var messageType = null;
+            var header = req.headers['x-github-event'];
 
-            switch (header) {
-                case 'pull_request':
-                    messageType = MESSAGE_TYPE.pullRequest;
-                    break;
-
-                case 'status':
-                    messageType = MESSAGE_TYPE.status;
-                    break;
-
-                case 'issue_comment':
-                    messageType = MESSAGE_TYPE.issueComment;
-                    break;
-
-                default:
-                    messageType = MESSAGE_TYPE.default;
-                    break;
-            }
-
-            this.emit('message', {
-                type: messageType,
-                body: req.body
-            });
+            this.emit(WebhookListener._getEventByHeader(header), req.body);
 
             res.end();
         });
@@ -45,4 +22,20 @@ export default class WebhookListener extends EventEmitter {
             process.stdout.write(`Build bot service listening at http://localhost: ${port}`);
         });
     }
+
+    static _getEventByHeader (header) {
+        for (var key in WebhookListener.EVENTS) {
+            if (WebhookListener.EVENTS.hasOwnProperty(key) && WebhookListener.EVENTS[key] === header)
+                return WebhookListener.EVENTS[key];
+        }
+
+        return WebhookListener.EVENTS.default;
+    }
 }
+
+WebhookListener.EVENTS = {
+    pullRequest:  'pull_request',
+    status:       'status',
+    issueComment: 'issue_comment',
+    default:      'default'
+};

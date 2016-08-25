@@ -15,14 +15,16 @@ gulp.task('clean', function () {
     return del('lib');
 });
 
-gulp.task('build', ['clean', 'lint'], function () {
+gulp.task('fast-build', ['clean'], function () {
     return gulp
         .src('src/**/*.js')
         .pipe(babel())
         .pipe(gulp.dest('./lib'));
 });
 
-gulp.task('test', function () {
+gulp.task('build', ['fast-build', 'lint']);
+
+gulp.task('test', ['build'], function () {
     /* eslint-disable */
     return require('./test/index.js')('test/fixtures/pull-request/index-test.js')
         .then(function () {
