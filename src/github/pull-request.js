@@ -1,6 +1,7 @@
 import Comment from './comment';
 import CombinedStatus from './combined-status';
 import Status from './status';
+import Commit from './commit';
 
 export default class PullRequest {
     constructor (githubApi, id, number, commit) {
@@ -8,6 +9,13 @@ export default class PullRequest {
         this.number    = number;
         this.githubApi = githubApi;
         this.commit    = commit;
+    }
+
+
+    async fetch () {
+        var prInfo = await this.githubApi.pullRequests.get(this.number);
+
+        this.commit = new Commit(prInfo.head.sha);
     }
 
     async getLastComment () {
@@ -35,7 +43,9 @@ export default class PullRequest {
     }
 
     async createComment (body) {
-        await this.githubApi.pullRequests.createComment(this.number, body);
+        var commentInfo = await this.githubApi.pullRequests.createComment(this.number, body);
+
+        return new Comment(commentInfo.id, commentInfo.body);
     }
 
     async getCombinedStatus () {

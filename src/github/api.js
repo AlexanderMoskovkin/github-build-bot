@@ -69,7 +69,21 @@ export default class GithubApi {
             return await this._sendMsg(this.github.repos.updateFile, msg);
         };
 
-        return { get, createHook, deleteHook, getBranch, createBranch, deleteBranch, getContent, updateFile };
+        var syncBranchWithCommit = async (branchName, sha) => {
+            return await this._sendMsg(this.github.gitdata.updateReference, { ref: `heads/${branchName}`, sha, force: true });
+        };
+
+        return {
+            get,
+            createHook,
+            deleteHook,
+            getBranch,
+            createBranch,
+            deleteBranch,
+            getContent,
+            updateFile,
+            syncBranchWithCommit
+        };
     }
 
     _createPullRequestsApi () {

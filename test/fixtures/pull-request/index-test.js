@@ -1,10 +1,28 @@
-fixture `Pull requests`;
-
 import { read } from 'read-file-relative';
 import { expect } from 'chai';
 import Status from '../../../lib/github/status';
 import * as config from '../../config';
 import Repository from '../../../lib/github/repository';
+
+
+var testBranch      = null;
+var testPullRequest = null;
+
+fixture `Pull requests`
+    .beforeEach(async () => {
+        log('SETUP: Create a pull-request by a team member', 1000);
+        var { branch, pullRequest } = await createPullRequest();
+
+        testBranch      = branch;
+        testPullRequest = pullRequest;
+    })
+    .afterEach(async () => {
+        log('TEARDOWN: Close pull-request');
+        await testPullRequest.close();
+
+        log('TEARDOWN: Remove the branch\n');
+        await testBranch.remove();
+    });
 
 const LOGGING_INTERVAL = 15 * 1000;
 
@@ -88,90 +106,122 @@ async function runWithWatchdog (fn, timeout, interval) {
     return res;
 }
 
-async function checkLastCommentBody (pullRequest, commentRe, timeout) {
+async function checkLastCommentBody (pullRequest, commentRe, timeout, prevCommentId) {
     if (typeof commentRe === 'string')
         commentRe = new RegExp(commentRe);
 
-    var getComment  = async () => await pullRequest.getLastComment();
+    var getComment = async () => {
+        var comment = await pullRequest.getLastComment();
+
+        if (!comment)
+            return null;
+
+        return prevCommentId && comment.id === prevCommentId ? null : comment;
+    };
+
     var lastComment = await runWithWatchdog(getComment, timeout, 2000);
 
     if (!commentRe.test(lastComment && lastComment.body))
         throw new Error(`The last comment is ${lastComment && lastComment.body} but should match ${commentRe}`);
 }
 
-const TESTS_PASSED_RE                 = /Tests for the commit\s[0-9a-f]*\shave passed/;
-const WAIT_FOR_TESTS_STARTED_TIMEOUT  = 2 * 60 * 1000;
-const WAIT_FOR_TESTS_FINISHED_TIMEOUT = 10 * 60 * 1000;
+var getPRStatusWithState = async (pullRequest, state) => {
+    var combinedStatus = await pullRequest.getCombinedStatus();
+
+    return combinedStatus.statuses.length === 1 && combinedStatus.statuses[0].state === state ?
+           combinedStatus.statuses[0] : null;
+};
+
+async function checkCommitStatus (pullRequest, state, descriptionRe, timeout) {
+    if (typeof descriptionRe === 'string')
+        descriptionRe = new RegExp(descriptionRe);
+
+    var combinedStatus = await runWithWatchdog(async () => {
+        return await getPRStatusWithState(pullRequest, state);
+    }, timeout, 2000);
+
+    if (!descriptionRe.test(combinedStatus.description))
+        throw new Error(`The status description is ${combinedStatus.description} but should match ${descriptionRe}`);
+}
+
+const TESTS_PASSED_COMMENT_RE     = /Tests for the commit\s[0-9a-f]*\shave passed/;
+const TESTS_FAILED_COMMENT_RE     = /Tests for the commit\s[0-9a-f]*\shave failed/;
+const TESTS_IN_PROGRESS_STATUS_RE = /The Travis CI build is in progress/;
+const TESTS_PASSED_STATUS_RE      = /The Travis CI build passed/;
+const TESTS_FAILED_STATUS_RE      = /The Travis CI build failed/;
+const TESTS_PENDING_STATUS_RE     = /Tests have been triggered by a modification and will start in\s[0-9]*\sminutes/;
+
+const WAIT_FOR_TESTS_STARTED_TIMEOUT     = 2 * 60 * 1000;
+const WAIT_FOR_TESTS_FINISHED_TIMEOUT    = 10 * 60 * 1000;
+const ADDITIONAL_COMMIT_TEST_START_DELAY = 3 * 60 * 1000;
+const GITHUB_ACTIONS_DELAY               = 5 * 1000;
 
 test('Run tests on pull-request', async () => {
-    /*eslint-disable*/
-    var error = null;
+    log('1. Check tests are run');
+    log('    a) Check the status');
+    await checkCommitStatus(testPullRequest, Status.STATE.pending, TESTS_IN_PROGRESS_STATUS_RE, WAIT_FOR_TESTS_STARTED_TIMEOUT);
 
-    try {
-        log('1. Create a pull-request by a team member', 1000);
-        var { branch, pullRequest } = await createPullRequest();
+    log('2. Wait for tests are done');
+    log('    a) Check the comment from build-bot');
+    await checkLastCommentBody(testPullRequest, TESTS_PASSED_COMMENT_RE, WAIT_FOR_TESTS_FINISHED_TIMEOUT);
 
-        log('2. Check tests are run');
-        log('    a) Check the status');
-        await runWithWatchdog(async () => {
-            var combinedStatus = await pullRequest.getCombinedStatus();
+    log('    b) Check the status');
+    var combinedStatus = await testPullRequest.getCombinedStatus();
 
-            return combinedStatus.statuses.length === 1 && combinedStatus.statuses[0].state === Status.STATE.pending;
-        }, WAIT_FOR_TESTS_STARTED_TIMEOUT, 2000);
+    expect(combinedStatus.statuses.length).to.be.eql(1);
+    expect(combinedStatus.statuses[0].state).to.be.eql(Status.STATE.success);
+    expect(TESTS_PASSED_STATUS_RE.test(combinedStatus.statuses[0].description)).to.be.true;
 
-        log('3. Wait for tests are done');
-        log('    a) Check the comment from build-bot');
-        await checkLastCommentBody(pullRequest, TESTS_PASSED_RE, WAIT_FOR_TESTS_FINISHED_TIMEOUT);
+    log('3. Close pull-request');
+    await testPullRequest.close();
+    await wait(GITHUB_ACTIONS_DELAY);
 
-        log('    b) Check the status');
-        var combinedStatus = await pullRequest.getCombinedStatus();
+    log('4. Reopen pull-request');
+    await testPullRequest.open();
 
-        expect(combinedStatus.statuses.length).to.be.eql(1);
-        expect(combinedStatus.statuses[0].state).to.be.eql(Status.STATE.success);
+    // NOTE: add a comment to separate build-bot comments
+    var separatingComment = await testPullRequest.createComment('separator');
 
-        log('4. Close pull-request');
-        await pullRequest.close();
+    log('5. Check tests are run');
+    log('    a) Check the status');
+    await checkCommitStatus(testPullRequest, Status.STATE.pending, TESTS_IN_PROGRESS_STATUS_RE, WAIT_FOR_TESTS_STARTED_TIMEOUT);
 
-        log('5. Reopen pull-request');
-        await pullRequest.open();
+    log('6. Wait for tests are done');
+    log('    a) Check the comment from build-bot');
+    await checkLastCommentBody(testPullRequest, TESTS_PASSED_COMMENT_RE, WAIT_FOR_TESTS_FINISHED_TIMEOUT, separatingComment.id);
 
-        log('6. Check tests are run');
-        log('    a) Check the status');
-        await runWithWatchdog(async () => {
-            var combinedStatus = await pullRequest.getCombinedStatus();
+    log('    b) Check the status');
+    combinedStatus = await testPullRequest.getCombinedStatus();
 
-            return combinedStatus.statuses.length === 1 && combinedStatus.statuses[0].state === Status.STATE.pending;
-        }, WAIT_FOR_TESTS_STARTED_TIMEOUT, 2000);
+    expect(combinedStatus.statuses.length).to.be.eql(1);
+    expect(combinedStatus.statuses[0].state).to.be.eql(Status.STATE.success);
+    expect(TESTS_PASSED_STATUS_RE.test(combinedStatus.statuses[0].description)).to.be.true;
 
-        log('7. Wait for tests are done');
-        log('    a) Check the comment from build-bot');
-        await checkLastCommentBody(pullRequest, TESTS_PASSED_RE, WAIT_FOR_TESTS_FINISHED_TIMEOUT);
+    log('7. Make an additional commit');
+    await testBranch.updateFile('test.js', await readFile('../../data/failed-test.js', 'base64'), 'commit2');
+    await testPullRequest.fetch();
 
-        log('    b) Check the status');
-        combinedStatus = await pullRequest.getCombinedStatus();
+    log('8. Check the status');
+    log('    a) Check waiting for tests status');
+    await checkCommitStatus(testPullRequest, Status.STATE.pending, TESTS_PENDING_STATUS_RE, WAIT_FOR_TESTS_STARTED_TIMEOUT);
 
-        expect(combinedStatus.statuses.length).to.be.eql(1);
-        expect(combinedStatus.statuses[0].state).to.be.eql(Status.STATE.success);
-    }
-    catch (err) {
-        console.log(`\n${err}`);
-        error = err;
-    }
-    finally {
-        await pullRequest.close();
-        await branch.remove();
-    }
-    /*eslint-enable*/
+    log('    b) Wait for tests for additional commit tests started');
+    await wait(ADDITIONAL_COMMIT_TEST_START_DELAY);
 
-    if (error)
-        throw new Error(error);
+    log('    c) Check running tests status');
+    await checkCommitStatus(testPullRequest, Status.STATE.pending, TESTS_IN_PROGRESS_STATUS_RE, WAIT_FOR_TESTS_STARTED_TIMEOUT);
 
+    // NOTE: add a comment to separate build-bot comments
+    separatingComment = await testPullRequest.createComment('separator');
 
-//  8. Make an additional commit
-//  9. Check the status
-//  10. Wait for tests are done
-//    a) Check the comment from build-bot
-//    b) Check the status
-//  11. Close pull-request
-//  12. Remove the branch
+    log('9. Wait for tests are done');
+    log('    a) Check the comment from build-bot');
+    await checkLastCommentBody(testPullRequest, TESTS_FAILED_COMMENT_RE, WAIT_FOR_TESTS_FINISHED_TIMEOUT, separatingComment.id);
+
+    log('    b) Check the status');
+    combinedStatus = await testPullRequest.getCombinedStatus();
+
+    expect(combinedStatus.statuses.length).to.be.eql(1);
+    expect(combinedStatus.statuses[0].state).to.be.eql(Status.STATE.failure);
+    expect(TESTS_FAILED_STATUS_RE.test(combinedStatus.statuses[0].description)).to.be.true;
 });

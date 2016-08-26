@@ -1,13 +1,15 @@
 import WebHookListener from './webhook-listener';
 import handlePullRequests from './handle-pull-requests';
 
+import { BOT_USERNAME, BOT_OAUTH_TOKEN } from '../config';
+
 export default class GithubBuildBot {
     constructor (port) {
         var webhookListener = new WebHookListener(port);
 
         handlePullRequests(webhookListener, {
-            user:       'gbb-build-bot',
-            oauthToken: '63ed0f23748b2831c7968962532a2fcec258798b'
+            user:       BOT_USERNAME,
+            oauthToken: BOT_OAUTH_TOKEN
         });
     }
 

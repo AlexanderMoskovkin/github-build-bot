@@ -5,7 +5,7 @@ import Commit from './github/commit';
 
 const PULL_REQUEST_ACTION = {
     opened:      'opened',
-    reopened:    'opened',
+    reopened:    'reopened',
     closed:      'closed',
     synchronize: 'synchronize'
 };
@@ -16,11 +16,13 @@ const TRAVIS_MESSAGE = {
     failed:   'The Travis CI build failed'
 };
 
-const botTestBranchPrefix  = 'bot-';
-const TRAVIS_CI_CONTEXT_RE = /continuous-integration\/travis-ci\//;
-const CREATE_BRANCH_DELAY  = 5000;
+const botTestBranchPrefix           = 'bot-';
+const TRAVIS_CI_CONTEXT_RE          = /continuous-integration\/travis-ci\//;
+const CREATE_BRANCH_DELAY           = 5000;
+const RUN_TESTS_AFTER_SYNC_PR_DELAY = 2 * 60 * 1000;
 
 var botCredentials = null;
+var syncPRTimeout  = null;
 
 
 function getTestBranchName (pullRequestId) {
@@ -34,28 +36,50 @@ function getPrIdByTestBranchName (branchName) {
 }
 
 async function onPRMessage (msg) {
-    //var owner          = msg.repository.owner.login;
-    var repo  = msg.repository.name;
-    var prSha = msg.pull_request.head.sha;
-    var prId  = msg.pull_request.id;
+    var owner          = msg.repository.owner.login;
+    var repoName       = msg.repository.name;
+    var prSha          = msg.pull_request.head.sha;
+    var prId           = msg.pull_request.id;
     //var title          = msg.pull_request.title;
-    //var prNumber       = msg.number;
+    var prNumber       = msg.number;
     var testBranchName = getTestBranchName(prId);
     var action         = msg.action;
 
-    var fork     = new Repository(botCredentials.user, repo, botCredentials.oauthToken);
-    var prCommit = new Commit(prSha);
+    var repository = new Repository(owner, repoName, botCredentials.oauthToken);
+    var fork       = new Repository(botCredentials.user, repoName, botCredentials.oauthToken);
+    var prCommit   = new Commit(prSha);
+
+    var testBranch = await fork.getBranch(testBranchName);
+
+    if (syncPRTimeout)
+        clearTimeout(syncPRTimeout);
 
     if (action === PULL_REQUEST_ACTION.opened || action === PULL_REQUEST_ACTION.reopened) {
         await wait(CREATE_BRANCH_DELAY);
-        await fork.createBranch(testBranchName, prCommit);
+
+        if (testBranch)
+            await testBranch.syncWithCommit(prSha);
+        else
+            await fork.createBranch(testBranchName, prCommit);
+
+        return;
     }
 
     if (action === PULL_REQUEST_ACTION.closed) {
-        var testBranch = await fork.getBranch(testBranchName);
-
         if (testBranch)
-            testBranch.remove();
+            await testBranch.remove();
+
+        return;
+    }
+
+    if (action === PULL_REQUEST_ACTION.synchronize) {
+        var pullRequest = await repository.getPullRequest(prNumber);
+        var message     = `Tests have been triggered by a modification and will start in ${Math.round(RUN_TESTS_AFTER_SYNC_PR_DELAY /
+                                                                                                      (60 * 1000))} minutes.`;
+
+        await pullRequest.createStatus('pending', void 0, message, botCredentials.user);
+
+        syncPRTimeout = setTimeout(async () => await testBranch.syncWithCommit(prSha), RUN_TESTS_AFTER_SYNC_PR_DELAY);
     }
 }
 
