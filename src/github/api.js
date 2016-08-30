@@ -17,10 +17,7 @@ export default class GithubApi {
 
         this.token = oauthToken;
 
-        this.github.authenticate({
-            type:  'oauth',
-            token: oauthToken
-        });
+        this.github.authenticate({ type: 'oauth', token: oauthToken });
 
         this.user = user;
         this.repo = repo;
@@ -61,12 +58,25 @@ export default class GithubApi {
             return await this._sendMsg(this.github.repos.getContent, { ref: branch, path: filePath });
         };
 
+        var createFile = async (branch, filePath, message, content) => {
+            return await this._sendMsg(this.github.repos.createFile, { branch, path: filePath, message, content });
+        };
+
         var updateFile = async (branch, filePath, message, content) => {
             var oldContent = await getContent(branch, filePath);
             var fileSha    = oldContent.sha;
             var msg        = { branch, path: filePath, message, content, sha: fileSha };
 
-            return await this._sendMsg(this.github.repos.updateFile, msg);
+            var updateFileInfo = await this._sendMsg(this.github.repos.updateFile, msg);
+
+            return updateFileInfo.commit.sha;
+        };
+
+        var replaceFile = async (filePath, newFilePath, branch = 'master', commitMessage) => {
+            var newFileInfo = await getContent(branch, newFilePath);
+            var newContent  = newFileInfo.content;
+
+            return await updateFile(branch, filePath, commitMessage, newContent);
         };
 
         var syncBranchWithCommit = async (branchName, sha) => {
@@ -81,7 +91,9 @@ export default class GithubApi {
             createBranch,
             deleteBranch,
             getContent,
+            createFile,
             updateFile,
+            replaceFile,
             syncBranchWithCommit
         };
     }
@@ -128,7 +140,13 @@ export default class GithubApi {
             });
         };
 
-        return { getCombinedStatus, createStatus };
+        var get = async sha => await this._sendMsg(this.github.gitdata.getCommit, { sha });
+
+        var create = async (message, tree, parents) => {
+            return await this._sendMsg(this.github.gitdata.createCommit, { message, tree, parents });
+        };
+
+        return { getCombinedStatus, createStatus, get, create };
     }
 }
 /*eslint-enable camelcase*/

@@ -15,7 +15,7 @@ export default class PullRequest {
     async fetch () {
         var prInfo = await this.githubApi.pullRequests.get(this.number);
 
-        this.commit = new Commit(prInfo.head.sha);
+        this.commit = new Commit(this.githubApi, prInfo.head.sha);
     }
 
     async getLastComment () {
