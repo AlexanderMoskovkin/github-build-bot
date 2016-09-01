@@ -1,6 +1,6 @@
 {
   "name": "github-build-bot",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "devDependencies": {
     "chai": "^3.3.0",
     "del": "^2.0.2",
@@ -14,12 +14,21 @@
     "babel-runtime": "^5.8.24",
     "body-parser": "^1.14.0",
     "express": "^4.13.3",
-    "github": "^0.2.4",
+    "forever": "^0.15.2",
+    "github": "^2.6.0",
+    "mkdirp": "^0.5.1",
     "promise": "^7.0.4"
   },
   "main": "lib/index",
+  "bin": {
+    "github-build-bot": "./bin/github-build-bot.js"
+  },
   "scripts": {
-    "test": "gulp test"
+    "test": "gulp test",
+    "start": "forever start ./bin/github-build-bot.js",
+    "stop": "forever stop -t ./bin/github-build-bot.js",
+    "restart": "forever restart -t ./bin/github-build-bot.js",
+    "logs": "forever logs -f 0"
   },
   "files": [
     "lib"
