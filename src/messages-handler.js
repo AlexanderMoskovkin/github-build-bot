@@ -97,6 +97,8 @@ export default class MessagesHandler {
                     temporaryBranchName, commitMessage);
             })
             .then(commitSha => {
+                this.github.syncBranchWithCommit(repo, branchName, commitSha);
+
                 var currentPr = this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)];
 
                 currentPr.travisConfSha = commitSha;
