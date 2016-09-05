@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs';
-import { homedir } from 'os';
 import { sync as mkdirp } from 'mkdirp';
+import homedir from './utils/homedir';
 
 
 var LOG_PATH   = path.join(homedir(), '.build-bot-data/log.txt');
