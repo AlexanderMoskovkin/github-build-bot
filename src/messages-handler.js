@@ -134,7 +134,14 @@ export default class MessagesHandler {
     }
 
     _onPRClosed (repo, prNumber, branchName, title) {
-        delete this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)];
+        var prName = MessagesHandler._getPRName(repo, prNumber);
+        var pr     = this.state.openedPullRequests[prName];
+
+        clearTimeout(pr.waitForTestsTimeout);
+        clearTimeout(pr.syncTimeout);
+
+        delete this.state.openedPullRequests[prName];
+
         this._saveState();
 
         var travisConf = this._getTravisConf(title);
