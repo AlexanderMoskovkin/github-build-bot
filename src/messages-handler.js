@@ -181,7 +181,7 @@ export default class MessagesHandler {
         if (!pr)
             return;
 
-        var statusInfo = await (this.collaboratorGithub || this.github).getStatuses(repo, this.bot.name, branchName);
+        var statusInfo = await this.github.getStatuses(repo, this.bot.name, branchName);
 
         pr.sha = sha;
 
@@ -242,7 +242,7 @@ export default class MessagesHandler {
         (this.collaboratorGithub || this.github).createStatus(repo, owner, pr.sha, body.state, body.target_url,
             body.description, body.context);
 
-        var statusInfo = await (this.collaboratorGithub || this.github).getStatuses(repo, this.bot.name, pr.sha);
+        var statusInfo = await this.github.getStatuses(repo, this.bot.name, pr.branchName);
 
         if (statusInfo.state === 'pending' || statusInfo.statuses.some(status => status.state === 'pending'))
             return;
@@ -289,7 +289,7 @@ export default class MessagesHandler {
 
         var handlers = {
             '\\retest': async pr => {
-                var statusInfo = await (this.collaboratorGithub || this.github).getStatuses(pr.repo, name, pr.sha);
+                var statusInfo = await this.github.getStatuses(pr.repo, name, pr.branchName);
 
                 if (statusInfo.statuses.some(status => status.state === 'pending') || pr.syncTimeout)
                     return;
