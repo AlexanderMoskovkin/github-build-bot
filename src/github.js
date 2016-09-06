@@ -169,8 +169,8 @@ export default class GitHub {
         return makePromise(this.github.gitdata, this.github.gitdata.updateReference, [msg]);
     }
 
-    async getStatuses (repo, owner, branchName) {
-        log('getStatuses', repo, owner, branchName);
+    async getCombinedStatus (repo, owner, branchName) {
+        log('getCombinedStatus', repo, owner, branchName);
 
         var msg = {
             user: owner || this.user,
