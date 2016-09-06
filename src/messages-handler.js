@@ -49,14 +49,22 @@ export default class MessagesHandler {
         return 'build-bot-temp-' + branchName;
     }
 
+    static _getMark (state) {
+        return state === 'success' ? ':white_check_mark:' : ':x:';
+    }
+
+    static _getCILink (status) {
+        return `[${MessagesHandler._getMark(status.state) + status.context}](${status.target_url})`;
+    }
+
     static _getDetails (statuses) {
         if (statuses.length === 1)
             return `[details](${statuses[0].target_url})`;
 
-        return 'details: ' +
+        return 'details:\n\n' +
             statuses
-                .map(status => `[${status.context}](${status.target_url})`)
-                .join(', ');
+                .map(status => `*  ${MessagesHandler._getCILink(status)}`)
+                .join('\n\n');
     }
 
     _getPRBySha (repo, sha) {
@@ -256,23 +264,26 @@ export default class MessagesHandler {
         if (!pr)
             return;
 
+        var statusInfo = await this.github.getCombinedStatus(repo, this.bot.name, pr.branchName);
+
+        if (statusInfo.sha !== body.sha)
+            return;
+
         var owner = pr.owner;
 
         (this.collaboratorGithub || this.github).createStatus(repo, owner, pr.sha, body.state, body.target_url,
             body.description, body.context);
 
-        var statusInfo = await this.github.getCombinedStatus(repo, this.bot.name, pr.branchName);
 
         if (statusInfo.state === 'pending' || statusInfo.statuses.some(status => status.state === 'pending'))
             return;
 
-        var success = statusInfo.state === 'success';
-        var status  = success ? 'passed' : 'failed';
-        var emoji   = success ? ':white_check_mark:' : ':x:';
+        var status  = statusInfo.state === 'success' ? 'passed' : 'failed';
+        var mark    = MessagesHandler._getMark(statusInfo.state);
         var details = MessagesHandler._getDetails(statusInfo.statuses);
 
         this.github.createPullRequestComment(repo, pr.number,
-            `${emoji} Tests for the commit ${pr.sha} have ${status}. See ${details}.`, owner, repo);
+            `${mark} Tests for the commit ${pr.sha} have ${status}. See ${details}.`, owner, repo);
     }
 
     _onIssueCommentMessage (body) {
