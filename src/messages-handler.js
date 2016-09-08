@@ -54,7 +54,7 @@ export default class MessagesHandler {
     }
 
     static _getCILink (status) {
-        return `[${MessagesHandler._getMark(status.state) + status.context}](${status.target_url})`;
+        return `[${MessagesHandler._getMark(status.state)}&nbsp;${status.context}](${status.target_url})`;
     }
 
     static _getDetails (statuses) {
@@ -63,7 +63,7 @@ export default class MessagesHandler {
 
         return 'details:\n\n' +
             statuses
-                .map(status => `*  ${MessagesHandler._getCILink(status)}`)
+                .map(status => `* ${MessagesHandler._getCILink(status)}`)
                 .join('\n\n');
     }
 
@@ -283,7 +283,7 @@ export default class MessagesHandler {
         var details = MessagesHandler._getDetails(statusInfo.statuses);
 
         this.github.createPullRequestComment(repo, pr.number,
-            `${mark} Tests for the commit ${pr.sha} have ${status}. See ${details}.`, owner, repo);
+            `${mark}&nbsp;Tests for the commit ${pr.sha} have ${status}. See ${details}.`, owner, repo);
     }
 
     _onIssueCommentMessage (body) {
