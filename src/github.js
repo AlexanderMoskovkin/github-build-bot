@@ -20,9 +20,10 @@ export default class GitHub {
     constructor (user, oauthToken) {
         this.githubInitOptions = {
             version:  '3.0.0',
-            // optional
             protocol: 'https',
             host:     'api.github.com',
+            Promise:  Promise,
+            headers:  { 'user-agent': 'github-build-bot' },
             timeout:  5000
         };
 
@@ -168,38 +169,48 @@ export default class GitHub {
         return makePromise(this.github.gitdata, this.github.gitdata.updateReference, [msg]);
     }
 
+    async getCombinedStatus (repo, owner, branchName) {
+        log('getCombinedStatus', repo, owner, branchName);
+
+        var msg = {
+            user: owner || this.user,
+            repo: repo,
+            sha:  branchName
+        };
+
+        return makePromise(this.github, this.github.repos.getCombinedStatus, [msg]);
+    }
+
     async createStatus (repo, owner, sha, state, targetUrl, description, context) {
         log('createStatus', repo, owner, sha, state, targetUrl, description, context);
 
         var msg = {
-            user:         owner || this.user,
-            repo:         repo,
-            sha:          sha,
-            state:        state,
-            'target_url': targetUrl,
-            description:  description,
-            context:      context
+            user:        owner || this.user,
+            repo:        repo,
+            sha:         sha,
+            state:       state,
+            description: description,
+            context:     context
         };
 
-        return makePromise(this.github, this.github.statuses.create, [msg]);
+        if (targetUrl)
+            msg['target_url'] = targetUrl;
+
+        return makePromise(this.github, this.github.repos.createStatus, [msg]);
     }
 
     async isUserCollaborator (repo, owner, user) {
         log('isUserCollaborator', repo, owner, user);
 
         var msg = {
-            repo:       repo,
-            user:       owner,
-            collabuser: user
+            'repo':     repo,
+            'user':     owner,
+            'per_page': 100
         };
 
-        return makePromise(this.github, this.github.repos.getCollaborator, [msg])
-            .then(function () {
-                return true;
-            })
-            .catch(function () {
-                return false;
-            });
+        var collaborators = await makePromise(this.github, this.github.repos.getCollaborators, [msg]);
+
+        return collaborators.map(collaborator => collaborator.login).indexOf(user) > -1;
     }
 
     async getContent (repo, user, filePath, branch) {

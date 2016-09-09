@@ -1,13 +1,6 @@
 import GitHub from './github';
 import GITHUB_MESSAGE_TYPES from './github-message-types';
-import { log, saveState }from './log';
-
-
-const TRAVIS_MESSAGES = {
-    progress: 'The Travis CI build is in progress',
-    passed:   'The Travis CI build passed',
-    failed:   'The Travis CI build failed'
-};
+import { log, saveState, emptyState }from './log';
 
 
 export default class MessagesHandler {
@@ -18,7 +11,7 @@ export default class MessagesHandler {
         if (collaborator)
             this.collaboratorGithub = new GitHub(collaborator.name, collaborator.token);
 
-        this.state = state || { openedPullRequests: {} };
+        this.state = state || emptyState();
 
         this.SYNCHRONIZE_TIMEOUT = 5 * 60 * 1000;
     }
@@ -54,6 +47,24 @@ export default class MessagesHandler {
 
     static _getTemporaryBranchName (branchName) {
         return 'build-bot-temp-' + branchName;
+    }
+
+    static _getMark (state) {
+        return state === 'success' ? ':white_check_mark:' : ':x:';
+    }
+
+    static _getCILink (status) {
+        return `[${MessagesHandler._getMark(status.state)}&nbsp;${status.context}](${status.target_url})`;
+    }
+
+    static _getDetails (statuses) {
+        if (statuses.length === 1)
+            return `[details](${statuses[0].target_url})`;
+
+        return 'details:\n\n' +
+            statuses
+                .map(status => `* ${MessagesHandler._getCILink(status)}`)
+                .join('\n\n');
     }
 
     _getPRBySha (repo, sha) {
@@ -143,7 +154,14 @@ export default class MessagesHandler {
     }
 
     _onPRClosed (repo, prNumber, branchName, title) {
-        delete this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)];
+        var prName = MessagesHandler._getPRName(repo, prNumber);
+        var pr     = this.state.openedPullRequests[prName];
+
+        clearTimeout(pr.waitForTestsTimeout);
+        clearTimeout(pr.syncTimeout);
+
+        delete this.state.openedPullRequests[prName];
+
         this._saveState();
 
         var travisConf = this._getTravisConf(title);
@@ -154,9 +172,8 @@ export default class MessagesHandler {
             this.github.deleteBranch(repo, MessagesHandler._getTemporaryBranchName(branchName));
     }
 
-    _waitForTestsStart (pr, repo, owner, sha, targetUrl) {
+    _waitForTestsStart (pr, repo, owner, sha, statuses) {
         var handler = this;
-        var botName = this.bot.name;
 
         if (pr.waitForTestsTimeout) {
             clearTimeout(pr.waitForTestsTimeout);
@@ -166,10 +183,10 @@ export default class MessagesHandler {
         pr.timeToTests = Math.round(this.SYNCHRONIZE_TIMEOUT / 60000);
 
         function setStatus (time) {
-            var message = `Tests have been triggered by a modification and will start in ${time} minute.`;
+            var message = `Tests will start in ${time} minute(s).`;
 
-            (handler.collaboratorGithub ||
-             handler.github).createStatus(repo, owner, sha, 'pending', targetUrl, message, botName);
+            statuses.forEach(status => (handler.collaboratorGithub ||
+                handler.github).createStatus(repo, owner, sha, 'pending', '', message, status.context));
 
             if (time) {
                 pr.waitForTestsTimeout = setTimeout(() => {
@@ -185,13 +202,14 @@ export default class MessagesHandler {
         setStatus(pr.timeToTests);
     }
 
-    _onPRSynchronized (repo, prNumber, branchName, sha, owner, targetUrl, title) {
+    async _onPRSynchronized (repo, prNumber, branchName, sha, owner, title) {
         var pr = this.state.openedPullRequests[MessagesHandler._getPRName(repo, prNumber)];
 
         if (!pr)
             return;
 
-        delete pr.runningTest;
+        var statusInfo = await this.github.getCombinedStatus(repo, this.bot.name, branchName);
+
         pr.sha = sha;
 
         if (pr.syncTimeout) {
@@ -207,7 +225,8 @@ export default class MessagesHandler {
         }, this.SYNCHRONIZE_TIMEOUT);
 
         this._saveState();
-        this._waitForTestsStart(pr, repo, owner, sha, targetUrl);
+
+        this._waitForTestsStart(pr, repo, owner, sha, statusInfo.statuses);
     }
 
     _onPRMessage (body) {
@@ -229,14 +248,13 @@ export default class MessagesHandler {
             this._onPRClosed(repo, prNumber, testBranchName, title);
 
         if (body.action === 'synchronize')
-            this._onPRSynchronized(repo, prNumber, testBranchName, prSha, owner, body.target_url, title);
-
+            this._onPRSynchronized(repo, prNumber, testBranchName, prSha, owner, title);
     }
 
-    _onStatusMessage (body) {
+    async _onStatusMessage (body) {
         log('Status message: ' + JSON.stringify(body, null, 4));
 
-        if (!/continuous-integration\/travis-ci\//.test(body.context))
+        if (body.repository.owner.login !== this.bot.name)
             return;
 
         var repo = body.repository.name;
@@ -246,39 +264,26 @@ export default class MessagesHandler {
         if (!pr)
             return;
 
+        var statusInfo = await this.github.getCombinedStatus(repo, this.bot.name, pr.branchName);
+
+        if (statusInfo.sha !== body.sha)
+            return;
+
         var owner = pr.owner;
 
-        if (body.state === 'pending') {
-            if (!pr.runningTest) {
-                pr.runningTest = body.sha;
-
-                this._saveState();
-
-                (this.collaboratorGithub ||
-                 this.github).createStatus(repo, owner, pr.sha, 'pending', body.target_url, TRAVIS_MESSAGES.progress, this.bot.name);
-            }
-
-            return;
-        }
-
-        if (pr.runningTest !== body.sha)
-            return;
-
-        pr.runningTest = null;
-
-        this._saveState();
-
-        var success = body.state === 'success';
-        var status  = success ? 'passed' : 'failed';
-        var emoji   = success ? ':white_check_mark:' : ':x:';
-
         (this.collaboratorGithub || this.github).createStatus(repo, owner, pr.sha, body.state, body.target_url,
-            success ? TRAVIS_MESSAGES.passed : TRAVIS_MESSAGES.failed, this.bot.name)
-            .then(() => {
-                this.github.createPullRequestComment(repo, pr.number,
-                    `${emoji} Tests for the commit ${pr.sha} have ${status}. See [details](${body.target_url}).`,
-                    owner, repo);
-            });
+            body.description, body.context);
+
+
+        if (statusInfo.state === 'pending' || statusInfo.statuses.some(status => status.state === 'pending'))
+            return;
+
+        var status  = statusInfo.state === 'success' ? 'passed' : 'failed';
+        var mark    = MessagesHandler._getMark(statusInfo.state);
+        var details = MessagesHandler._getDetails(statusInfo.statuses);
+
+        this.github.createPullRequestComment(repo, pr.number,
+            `${mark}&nbsp;Tests for the commit ${pr.sha} have ${status}. See ${details}.`, owner, repo);
     }
 
     _onIssueCommentMessage (body) {
@@ -305,14 +310,19 @@ export default class MessagesHandler {
     }
 
     _getCommandHandler (message, title) {
-        if (message.indexOf(`@${this.bot.name}`) < 0)
+        var name = this.bot.name;
+
+        if (message.indexOf(`@${name}`) < 0)
             return null;
 
-        message = message.replace(`@${this.bot.name}`, '').replace(/\s/g, '');
+        message = message.replace(`@${name}`, '').replace(/\s/g, '');
+
 
         var handlers = {
-            '\\retest': (pr) => {
-                if (pr.runningTest || pr.syncTimeout)
+            '\\retest': async pr => {
+                var statusInfo = await this.github.getCombinedStatus(pr.repo, name, pr.branchName);
+
+                if (statusInfo.statuses.some(status => status.state === 'pending') || pr.syncTimeout)
                     return;
 
                 this._syncBranchWithCommit(pr.repo, pr.owner, pr.branchName, pr.sha, this._getTravisConf(title), pr.number);

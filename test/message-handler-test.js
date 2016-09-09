@@ -93,19 +93,22 @@ function getIssueCommentMessage (action, repo, issueId, issueNumber, user, body)
     };
 }
 
-function getTestMessage (state, repo, sha, url) {
+function getTestMessage (state, repo, sha, url, description, context) {
+    context = context || 'continuous-integration/travis-ci/';
+
     return {
         type: GITHUB_MESSAGE_TYPES.status,
         body: {
-            sha:        sha,
-            target_url: url,
-            state:      state,
-            repository: {
-                owner: { login: 'repo1Owner' },
-                name:  repo
-            },
+            sha:         sha,
+            target_url:  url,
+            state:       state,
+            description: description,
+            context:     context,
 
-            context: 'continuous-integration/travis-ci/'
+            repository: {
+                owner: { login: 'botName' },
+                name:  repo
+            }
         }
     };
 }
@@ -131,6 +134,7 @@ describe('Message handler', function () {
         GitHub.prototype.syncBranchWithCommit     = asyncFuncMock;
         GitHub.prototype.createStatus             = asyncFuncMock;
         GitHub.prototype.isUserCollaborator       = asyncFuncMock;
+        GitHub.prototype.getCombinedStatus        = asyncFuncMock;
     });
 
     afterEach(function () {
@@ -185,10 +189,17 @@ describe('Message handler', function () {
     });
 
     it('Should wait for tests after the pr opened', function (done) {
-        var expectedPrStates     = ['pending', 'success'].join(' ');
-        var prStates             = [];
-        var expectedDescriptions = ['The Travis CI build is in progress', 'The Travis CI build passed'].join(' ');
-        var descriptions         = [];
+        var expectedPrStates = ['pending', 'pending', 'success'].join(' ');
+        var prStates         = [];
+
+        var expectedDescriptions = [
+            'The Travis CI build is in progress',
+            'The Travis CI build is in progress 2',
+            'The Travis CI build has succeeded'
+        ].join(' ');
+
+        var descriptions = [];
+        var testsDone    = false;
 
         GitHub.prototype.createStatus = function (repo, owner, sha, state, targetUrl, description, context) {
             try {
@@ -196,7 +207,7 @@ describe('Message handler', function () {
                 expect(owner).eql('repo1Owner');
                 expect(sha).eql('sha1');
                 expect(targetUrl).eql('url1');
-                expect(context).eql('botName');
+                expect(context).eql('continuous-integration/travis-ci/');
                 expect(this.token).eql(collaboratorCredentials.token);
 
                 prStates.push(state);
@@ -229,6 +240,31 @@ describe('Message handler', function () {
             }
         };
 
+        GitHub.prototype.getCombinedStatus = function (repo, owner, branchName) {
+            try {
+                expect(owner).eql('botName');
+                expect(repo).eql('repo1');
+                expect(branchName).eql('rp-pr1');
+                expect(this.token).eql(botCredentials.token);
+
+                return asyncFuncMock()
+                    .then(function () {
+                        return {
+                            state:    testsDone ? 'success' : 'pending',
+                            sha:      'sha1',
+                            statuses: [{
+                                'state':      testsDone ? 'success' : 'pending',
+                                'message':    testsDone ? 'The Travis CI build has succeeded' : 'The Travis CI build is in progress',
+                                'target_url': 'url1'
+                            }]
+                        };
+                    });
+            }
+            catch (err) {
+                done(err);
+            }
+        };
+
         mh = new MessagesHandler(botCredentials, null, collaboratorCredentials);
 
         asyncFuncMock()
@@ -237,16 +273,160 @@ describe('Message handler', function () {
             })
             .then(wait(0))
             .then(function () {
-                mh.handle(getTestMessage('pending', 'repo1', 'sha1', 'url1'));
-                mh.handle(getTestMessage('pending', 'repo1', 'sha1', 'url1'));
-                mh.handle(getTestMessage('pending', 'repo1', 'sha2', 'url2'));
-                mh.handle(getTestMessage('pending', 'repo2', 'sha3', 'url3'));
+                mh.handle(getTestMessage('pending', 'repo1', 'sha1', 'url1', 'The Travis CI build is in progress'));
+                mh.handle(getTestMessage('pending', 'repo1', 'sha1', 'url1', 'The Travis CI build is in progress 2'));
+                mh.handle(getTestMessage('pending', 'repo1', 'sha2', 'url2', 'The Travis CI build is in progress'));
+                mh.handle(getTestMessage('pending', 'repo2', 'sha3', 'url3', 'The Travis CI build is in progress'));
             })
             .then(wait(0))
             .then(function () {
-                mh.handle(getTestMessage('failure', 'repo1', 'sha2', 'url2'));
-                mh.handle(getTestMessage('failure', 'repo2', 'sha3', 'url3'));
-                mh.handle(getTestMessage('success', 'repo1', 'sha1', 'url1'));
+                testsDone = true;
+
+                mh.handle(getTestMessage('failure', 'repo1', 'sha2', 'url2', 'The Travis CI build has failed'));
+                mh.handle(getTestMessage('failure', 'repo2', 'sha3', 'url3', 'The Travis CI build has failed'));
+                mh.handle(getTestMessage('success', 'repo1', 'sha1', 'url1', 'The Travis CI build has succeeded'));
+            });
+    });
+
+    it('Should wait for multiple CI after the pr opened', function (done) {
+        var expectedPrStates = {
+            'travis':   ['pending', 'success'],
+            'appveyor': ['pending', 'failure']
+        };
+
+        var prStates = {
+            'travis':   [],
+            'appveyor': []
+        };
+
+        var expectedDescriptions = {
+            'travis': [
+                'The Travis CI build is in progress',
+                'The Travis CI build has succeeded'
+            ],
+            'appveyor': [
+                'The AppVeyor build is in progress',
+                'The AppVeyor build has failed'
+            ]
+        };
+
+        var descriptions = {
+            'travis':   [],
+            'appveyor': []
+        };
+
+        var testsDone = {
+            'travis':   false,
+            'appveyor': false
+        };
+
+        GitHub.prototype.createStatus = function (repo, owner, sha, state, targetUrl, description, context) {
+            try {
+                expect(repo).eql('repo1');
+                expect(owner).eql('repo1Owner');
+                expect(sha).eql('sha1');
+                expect(targetUrl).to.be.oneOf(['travis-url1', 'appveyor-url1']);
+                expect(context).to.be.oneOf(['travis', 'appveyor']);
+                expect(this.token).eql(collaboratorCredentials.token);
+
+                prStates[context].push(state);
+                descriptions[context].push(description);
+
+                return asyncFuncMock();
+            }
+            catch (err) {
+                done(err);
+            }
+        };
+
+        GitHub.prototype.createPullRequestComment = function (repo, prNumber, comment, owner) {
+            try {
+                expect(prNumber).eql(1);
+                expect(comment.indexOf('fail')).gt(-1);
+                expect(comment.indexOf('sha1')).gt(-1);
+                expect(comment.indexOf('travis-url1')).gt(-1);
+                expect(comment.indexOf('appveyor-url1')).gt(-1);
+                expect(owner).eql('repo1Owner');
+                expect(repo).eql('repo1');
+                expect(this.token).eql(botCredentials.token);
+
+                expect(prStates).eql(expectedPrStates);
+                expect(descriptions).eql(expectedDescriptions);
+
+                done();
+            }
+            catch (err) {
+                done(err);
+            }
+        };
+
+        GitHub.prototype.getCombinedStatus = function (repo, owner, branchName) {
+            try {
+                expect(owner).eql('botName');
+                expect(repo).eql('repo1');
+                expect(branchName).eql('rp-pr1');
+                expect(this.token).eql(botCredentials.token);
+
+                return asyncFuncMock()
+                    .then(function () {
+                        return {
+                            state:    testsDone['appveyor'] ? 'failure' : 'pending',
+                            sha:      'sha1',
+                            statuses: [
+                                {
+                                    'context':    'travis',
+                                    'state':      testsDone['travis'] ? 'success' : 'pending',
+                                    'message':    testsDone['travis'] ? 'The Travis CI build has succeeded' : 'The Travis CI build is in progress',
+                                    'target_url': 'travis-url1'
+                                },
+                                {
+                                    'context':    'appveyor',
+                                    'state':      testsDone['appveyor'] ? 'failure' : 'pending',
+                                    'message':    testsDone['appveyor'] ? 'The AppVeyor build has failed' : 'The AppVeyor build is in progress',
+                                    'target_url': 'appveyor-url1'
+                                }
+                            ]
+                        };
+                    });
+            }
+            catch (err) {
+                done(err);
+            }
+        };
+
+        mh = new MessagesHandler(botCredentials, null, collaboratorCredentials);
+
+        asyncFuncMock()
+            .then(function () {
+                mh.handle(getPrMessage('opened', 'repo1', 'pr1', 1, 'sha1'));
+            })
+            .then(wait(0))
+            .then(function () {
+                mh.handle(getTestMessage('pending', 'repo1', 'sha1', 'travis-url1', 'The Travis CI build is in progress', 'travis'));
+                mh.handle(getTestMessage('pending', 'repo1', 'sha2', 'travis-url2', 'The Travis CI build is in progress', 'travis'));
+                mh.handle(getTestMessage('pending', 'repo2', 'sha3', 'travis-url3', 'The Travis CI build is in progress', 'travis'));
+            })
+            .then(wait(0))
+            .then(function () {
+                mh.handle(getTestMessage('pending', 'repo1', 'sha1', 'appveyor-url1', 'The AppVeyor build is in progress', 'appveyor'));
+                mh.handle(getTestMessage('pending', 'repo1', 'sha2', 'appveyor-url2', 'The AppVeyor build is in progress', 'appveyor'));
+                mh.handle(getTestMessage('pending', 'repo2', 'sha3', 'appveyor-url3', 'The AppVeyor build is in progress', 'appveyor'));
+            })
+            .then(wait(0))
+            .then(function () {
+                testsDone['appveyor'] = true;
+
+                mh.handle(getTestMessage('success', 'repo1', 'sha2', 'appveyor-url2', 'The AppVeyor build has succeeded', 'appveyor'));
+                mh.handle(getTestMessage('success', 'repo2', 'sha3', 'appveyor-url3', 'The AppVeyor build has succeeded', 'appveyor'));
+                mh.handle(getTestMessage('failure', 'repo1', 'sha1', 'appveyor-url1', 'The AppVeyor build has failed', 'appveyor'));
+            })
+            .then(wait(0))
+            .then(function () {
+                testsDone['travis'] = true;
+
+                mh.handle(getTestMessage('failure', 'repo1', 'sha2', 'travis-url2', 'The Travis CI build has failed', 'travis'));
+                mh.handle(getTestMessage('failure', 'repo2', 'sha3', 'travis-url3', 'The Travis CI build has failed', 'travis'));
+                mh.handle(getTestMessage('success', 'repo1', 'sha1', 'travis-url1', 'The Travis CI build has succeeded', 'travis'));
             });
     });
 
@@ -257,6 +437,7 @@ describe('Message handler', function () {
         var branchSynchronized = false;
         var expectedStates     = ['pending', 'pending', 'pending', 'pending', 'success'].join(' ');
         var states             = [];
+        var testsDone          = false;
 
         mh = new MessagesHandler(botCredentials);
 
@@ -311,6 +492,36 @@ describe('Message handler', function () {
             }
         };
 
+        GitHub.prototype.getCombinedStatus = function (repo, owner, branchName) {
+            try {
+                expect(owner).eql('botName');
+                expect(repo).eql('repo1');
+                expect(branchName).eql('rp-pr1');
+                expect(this.token).eql(botCredentials.token);
+
+                var state   = testsDone ? 'success' : 'pending';
+                var message = testsDone ? 'The Travis CI build has succeeded' : 'The Travis CI build is in progress';
+                var sha     = 'sha1';
+
+                if (statusChangedCount === 1)
+                    sha = 'sha2';
+                else if (statusChangedCount >= 2)
+                    sha = 'sha3';
+
+                return asyncFuncMock()
+                    .then(function () {
+                        return {
+                            state:    state,
+                            sha:      sha,
+                            statuses: [{ state: state, message: message }]
+                        };
+                    });
+            }
+            catch (err) {
+                done(err);
+            }
+        };
+
         asyncFuncMock()
             .then(function () {
                 mh.handle(getPrMessage('opened', 'repo1', 'pr1', 1, 'sha1'));
@@ -335,6 +546,8 @@ describe('Message handler', function () {
             })
             .then(wait(0))
             .then(function () {
+                testsDone = true;
+
                 mh.handle(getTestMessage('failed', 'repo1', 'sha1', 'url1'));
                 mh.handle(getTestMessage('success', 'repo1', 'sha3', 'url2'));
             });
@@ -450,6 +663,8 @@ describe('Message handler', function () {
 
     describe('build-bot commands', function () {
         it('Restart tests on the \\retest command', function (done) {
+            var testsDone = false;
+
             mh = new MessagesHandler(botCredentials, null, collaboratorCredentials);
 
             GitHub.prototype.syncBranchWithCommit = function (repo, branchName, commitSha) {
@@ -470,6 +685,30 @@ describe('Message handler', function () {
                 });
             };
 
+            GitHub.prototype.getCombinedStatus = function (repo, owner, branchName) {
+                try {
+                    expect(owner).eql('botName');
+                    expect(repo).eql('repo1');
+                    expect(branchName).eql('rp-pr1');
+                    expect(this.token).eql(botCredentials.token);
+
+                    var state   = testsDone ? 'success' : 'pending';
+                    var message = testsDone ? 'The Travis CI build has succeeded' : 'The Travis CI build is in progress';
+
+                    return asyncFuncMock()
+                        .then(function () {
+                            return {
+                                state:    state,
+                                sha:      'sha1',
+                                statuses: [{ state: state, message: message }]
+                            };
+                        });
+                }
+                catch (err) {
+                    done(err);
+                }
+            };
+
             asyncFuncMock()
                 .then(function () {
                     mh.handle(getPrMessage('opened', 'repo1', 'pr1', 1, 'sha1'));
@@ -480,6 +719,8 @@ describe('Message handler', function () {
                 })
                 .then(wait(0))
                 .then(function () {
+                    testsDone = true;
+
                     mh.handle(getTestMessage('success', 'repo1', 'sha1', 'url1'));
                 })
                 .then(wait(0))

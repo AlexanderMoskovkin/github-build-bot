@@ -1,8 +1,31 @@
 import path from 'path';
 import fs from 'fs';
+import { sync as mkdirp } from 'mkdirp';
+import homedir from './utils/homedir';
 
-var LOG_PATH   = path.join(__dirname, '../../.build-bot-data/log.txt');
-var STATE_PATH = path.join(__dirname, '../../.build-bot-data/state.json');
+
+var LOG_PATH   = path.join(homedir(), '.build-bot-data/log.txt');
+var STATE_PATH = path.join(homedir(), '.build-bot-data/state.json');
+
+function init () {
+    try {
+        var logDirectory = path.dirname(LOG_PATH);
+
+        fs.statSync(logDirectory);
+    }
+    catch (e) {
+        mkdirp(logDirectory);
+    }
+
+    try {
+        fs.statSync(STATE_PATH);
+    }
+    catch (e) {
+        mkdirp(path.dirname(STATE_PATH));
+
+        saveState(emptyState());
+    }
+}
 
 export function log (...msgs) {
     var msg = msgs.join(' ');
@@ -27,3 +50,9 @@ export function readState () {
 
     return state;
 }
+
+export function emptyState () {
+    return { openedPullRequests: {} };
+}
+
+init();
