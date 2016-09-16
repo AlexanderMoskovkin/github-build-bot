@@ -84,10 +84,23 @@ export default class MessagesHandler {
             return this.github.createBranch(repo, prSha, branchName);
 
         var temporaryBranchName = MessagesHandler._getTemporaryBranchName(branchName);
+        var commitMessage       = '';
 
         this.github.createBranch(repo, prSha, temporaryBranchName)
             .then(() => this.github.getCommitMessage(repo, owner, prSha))
-            .then(commitMessage => {
+            .then(message => {
+                commitMessage = message;
+
+                return this.github
+                    .deleteFile(repo, 'appveyor.yml', temporaryBranchName, commitMessage)
+                    .catch(err => {
+                        if (err.status === 'Not Found')
+                            return;
+
+                        throw err;
+                    });
+            })
+            .then(() => {
                 return this.github.replaceFile(repo, '.travis.yml', `.travis-${travisConf}.yml`,
                     temporaryBranchName, commitMessage);
             })
@@ -107,10 +120,23 @@ export default class MessagesHandler {
             return this.github.syncBranchWithCommit(repo, branchName, prSha);
 
         var temporaryBranchName = MessagesHandler._getTemporaryBranchName(branchName);
+        var commitMessage       = '';
 
         this.github.syncBranchWithCommit(repo, temporaryBranchName, prSha)
             .then(() => this.github.getCommitMessage(repo, owner, prSha))
-            .then(commitMessage => {
+            .then(message => {
+                commitMessage = message;
+
+                return this.github
+                    .deleteFile(repo, 'appveyor.yml', temporaryBranchName, commitMessage)
+                    .catch(err => {
+                        if (err.status === 'Not Found')
+                            return;
+
+                        throw err;
+                    });
+            })
+            .then(() => {
                 return this.github.replaceFile(repo, '.travis.yml', `.travis-${travisConf}.yml`,
                     temporaryBranchName, commitMessage);
             })

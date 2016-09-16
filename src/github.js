@@ -269,6 +269,33 @@ export default class GitHub {
             });
     }
 
+    async deleteFile (repo, filePath, branch, commitMessage) {
+        var fileSha = null;
+
+        var getFileContentMsg = {
+            repo: repo,
+            user: this.user,
+            path: filePath,
+            ref:  branch || 'master'
+        };
+
+        return makePromise(this.github, this.github.repos.getContent, [getFileContentMsg])
+            .then(res => {
+                fileSha = res.sha;
+
+                var deleteFileMsg = {
+                    repo:    repo,
+                    user:    this.user,
+                    path:    filePath,
+                    branch:  branch || 'master',
+                    message: commitMessage,
+                    sha:     fileSha
+                };
+
+                return makePromise(this.github, this.github.repos.deleteFile, [deleteFileMsg]);
+            });
+    }
+
     async getCommitMessage (repo, user, sha) {
         var msg = {
             repo: repo,
