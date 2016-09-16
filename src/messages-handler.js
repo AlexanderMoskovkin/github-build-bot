@@ -91,7 +91,14 @@ export default class MessagesHandler {
             .then(message => {
                 commitMessage = message;
 
-                return this.github.deleteFile(repo, 'appveyor.yml', temporaryBranchName, commitMessage);
+                return this.github
+                    .deleteFile(repo, 'appveyor.yml', temporaryBranchName, commitMessage)
+                    .catch(err => {
+                        if (err.status === 'Not Found')
+                            return;
+
+                        throw err;
+                    });
             })
             .then(() => {
                 return this.github.replaceFile(repo, '.travis.yml', `.travis-${travisConf}.yml`,
@@ -120,7 +127,14 @@ export default class MessagesHandler {
             .then(message => {
                 commitMessage = message;
 
-                return this.github.deleteFile(repo, 'appveyor.yml', temporaryBranchName, commitMessage);
+                return this.github
+                    .deleteFile(repo, 'appveyor.yml', temporaryBranchName, commitMessage)
+                    .catch(err => {
+                        if (err.status === 'Not Found')
+                            return;
+
+                        throw err;
+                    });
             })
             .then(() => {
                 return this.github.replaceFile(repo, '.travis.yml', `.travis-${travisConf}.yml`,
