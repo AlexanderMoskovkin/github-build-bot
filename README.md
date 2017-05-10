@@ -2,10 +2,10 @@
 
 [![Build Status](https://travis-ci.org/AlexanderMoskovkin/github-build-bot.svg?branch=master)](https://travis-ci.org/AlexanderMoskovkin/github-build-bot)
 
-##Install
+## Install
 `$ npm install github-build-bot`
 
-##Usage
+## Usage
 ```js
 var GitHubBot = require('github-build-bot');
 
@@ -16,10 +16,10 @@ var SERVER_PORT            = '1800';
 new GitHubBot(BUILD_BOT_GITHUB_NAME, BUILD_BOT_GITHUB_TOKEN, SERVER_PORT);
 ```
 
-##Build Bot commands
+## Build Bot commands
 `@<build-bot-name> \<command>`
 
-###Supported commands
+### Supported commands
 ```js
 @<build-bot-name> \retest    //rerun tests for the current pull request
 ```
