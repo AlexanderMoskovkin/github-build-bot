@@ -405,10 +405,20 @@ export default class MessagesHandler {
         });
     }
 
-    async _restartFailedTasks (pr) {
-        const statusInfo = await this.github.getCombinedStatus(pr.repo, this.bot.name, pr.branchName);
+    async _canRestartTasks (pr, statusInfo, forceRestart) {
+        if (forceRestart)
+            return true;
 
         if (statusInfo.statuses.some(status => status.state === 'pending') || pr.syncTimeout)
+            return false;
+
+        return true;
+    }
+
+    async _restartFailedTasks (pr, { force }) {
+        const statusInfo = await this.github.getCombinedStatus(pr.repo, this.bot.name, pr.branchName);
+
+        if (!await this._canRestartTasks(pr, statusInfo, force))
             return;
 
         const failedStatuses = statusInfo.statuses.filter(status => status.state !== 'success');
@@ -421,10 +431,10 @@ export default class MessagesHandler {
         }
     }
 
-    async _restartAllTasks (pr, { title }) {
-        var statusInfo = await this.github.getCombinedStatus(pr.repo, this.bot.name, pr.branchName);
+    async _restartAllTasks (pr, { force, title }) {
+        const statusInfo = await this.github.getCombinedStatus(pr.repo, this.bot.name, pr.branchName);
 
-        if (statusInfo.statuses.some(status => status.state === 'pending') || pr.syncTimeout)
+        if (!await this._canRestartTasks(pr, statusInfo, force))
             return;
 
         this._syncBranchWithCommit(pr.repo, pr.owner, pr.branchName, pr.sha, this._getTravisConf(title), pr.number);
@@ -445,6 +455,14 @@ export default class MessagesHandler {
             case 'retest':
             case 'restart':
                 return pr => this._restartFailedTasks(pr, { title });
+            case 'retest-force-all':
+            case 'restart-force-all':
+            case 'retest-all-force':
+            case 'restart-all-force':
+                return pr => this._restartAllTasks(pr, { force: true, title });
+            case 'retest-force':
+            case 'restart-force':
+                return pr => this._restartFailedTasks(pr, { force: true, title });
             default:
                 return null;
         }
