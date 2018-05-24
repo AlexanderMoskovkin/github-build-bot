@@ -436,14 +436,14 @@ export default class MessagesHandler {
         if (message.indexOf(`@${name}`) < 0)
             return null;
 
-        message = message.replace(`@${name}`, '').replace(/\s/g, '');
+        message = message.replace(`@${name}`, '').replace(/\s/g, '').replace(/^[\/\\]/, '');
 
         switch (message) {
-            case '\\retest-all':
-            case '\\restart-all':
+            case 'retest-all':
+            case 'restart-all':
                 return pr => this._restartAllTasks(pr, { title });
-            case '\\retest':
-            case '\\restart':
+            case 'retest':
+            case 'restart':
                 return pr => this._restartFailedTasks(pr, { title });
             default:
                 return null;
