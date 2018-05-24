@@ -18,11 +18,11 @@ const APPVEYOR_API_HEADERS = { 'Authorization': `bearer ${process.env.APPVEYOR_T
 
 function getCiApiHeaders (providerType) {
     switch (providerType) {
-    case CI_PROVIDER.travis:
-        return TRAVIS_API_HEADERS;
+        case CI_PROVIDER.travis:
+            return TRAVIS_API_HEADERS;
 
-    case CI_PROVIDER.appveyor:
-        return APPVEYOR_API_HEADERS;
+        case CI_PROVIDER.appveyor:
+            return APPVEYOR_API_HEADERS;
     }
 }
 
@@ -438,13 +438,16 @@ export default class MessagesHandler {
 
         message = message.replace(`@${name}`, '').replace(/\s/g, '');
 
-
-        var handlers = {
-            '\\retest-all': pr => this._restartAllTasks(pr, { title }),
-            '\\retest':     pr => this._restartFailedTasks(pr, { title })
-        };
-
-        return handlers[message] || null;
+        switch (message) {
+            case '\\retest-all':
+            case '\\restart-all':
+                return pr => this._restartAllTasks(pr, { title });
+            case '\\retest':
+            case '\\restart':
+                return pr => this._restartFailedTasks(pr, { title });
+            default:
+                return null;
+        }
     }
 
     handle (message) {

@@ -48,7 +48,7 @@
     "yoda": [2, "never"],
     "brace-style": [2, "stroustrup", { "allowSingleLine": false }],
     "eol-last": 2,
-    "indent": 2,
+    "indent": [2, 4, { "SwitchCase": 1 }],
     "key-spacing": [2, { "align": "value" }],
     "max-nested-callbacks": [2, 3],
     "new-parens": 2,
