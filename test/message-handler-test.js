@@ -662,7 +662,7 @@ describe('Message handler', function () {
 
 
     describe('build-bot commands', function () {
-        it('Restart tests on the \\retest command', function (done) {
+        it('Restart tests on the \\retest-all command', function (done) {
             var testsDone = false;
 
             mh = new MessagesHandler(botCredentials, null, collaboratorCredentials);
@@ -726,7 +726,7 @@ describe('Message handler', function () {
                 .then(wait(0))
                 .then(function () {
                     mh.handle(getIssueCommentMessage('created', 'repo1', '123', 1,
-                        collaboratorCredentials.name, '@' + botCredentials.name + '  \\retest  '));
+                        collaboratorCredentials.name, '@' + botCredentials.name + '  \\retest-all  '));
                 });
         });
     });

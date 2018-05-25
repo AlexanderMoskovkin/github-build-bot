@@ -1,7 +1,30 @@
+import request from 'request-promise';
 import GitHub from './github';
 import GITHUB_MESSAGE_TYPES from './github-message-types';
 import { log, saveState, emptyState }from './log';
 
+
+const CI_PROVIDER = {
+    travis:   'travis',
+    appveyor: 'appveyor'
+};
+
+const TRAVIS_API_HEADERS = {
+    'Travis-API-Version': 3,
+    'Authorization':      `token ${process.env.TRAVIS_TOKEN}`
+};
+
+const APPVEYOR_API_HEADERS = { 'Authorization': `bearer ${process.env.APPVEYOR_TOKEN}` };
+
+function getCiApiHeaders (providerType) {
+    switch (providerType) {
+        case CI_PROVIDER.travis:
+            return TRAVIS_API_HEADERS;
+
+        case CI_PROVIDER.appveyor:
+            return APPVEYOR_API_HEADERS;
+    }
+}
 
 export default class MessagesHandler {
     constructor (bot, state, collaborator) {
@@ -335,27 +358,114 @@ export default class MessagesHandler {
             });
     }
 
+    async _requestCiApi (providerType, opts) {
+        return request(Object.assign({
+            json:    true,
+            headers: getCiApiHeaders(providerType)
+        }, opts));
+    }
+
+    async _restartTravis (pr) {
+        const repoSlug = encodeURIComponent(this.bot.name + '/' + pr.repo);
+
+        const branchInfo = await this._requestCiApi(CI_PROVIDER.travis, {
+            url: `https://api.travis-ci.org/repo/${repoSlug}/branch/${pr.branchName}`
+        });
+
+        const lastBuild = branchInfo['last_build'];
+
+        const lastBuildInfo = await this._requestCiApi(CI_PROVIDER.travis, {
+            url: `https://api.travis-ci.org/build/${lastBuild.id}?include=job.state`
+        });
+
+        const restartRequests = [];
+
+        for (const job of lastBuildInfo.jobs) {
+            if (job.state !== 'passed') {
+                restartRequests.push(this._requestCiApi(CI_PROVIDER.travis, {
+                    url:    `https://api.travis-ci.org/job/${job.id}/restart`,
+                    method: 'POST'
+                }));
+            }
+        }
+
+        await Promise.all(restartRequests);
+    }
+
+    async _restartAppveyor (pr) {
+        await this._requestCiApi(CI_PROVIDER.appveyor, {
+            url:    'https://ci.appveyor.com/api/builds',
+            method: 'POST',
+
+            body: {
+                accountName: this.bot.name,
+                projectSlug: pr.repo,
+                branch:      pr.branchName
+            }
+        });
+    }
+
+    async _canRestartTasks (pr, statusInfo, forceRestart) {
+        if (forceRestart)
+            return true;
+
+        if (statusInfo.statuses.some(status => status.state === 'pending') || pr.syncTimeout)
+            return false;
+
+        return true;
+    }
+
+    async _restartFailedTasks (pr, { force }) {
+        const statusInfo = await this.github.getCombinedStatus(pr.repo, this.bot.name, pr.branchName);
+
+        if (!await this._canRestartTasks(pr, statusInfo, force))
+            return;
+
+        const failedStatuses = statusInfo.statuses.filter(status => status.state !== 'success');
+
+        for (const status of failedStatuses) {
+            if (status.context.startsWith('continuous-integration/appveyor'))
+                await this._restartAppveyor(pr);
+            else if (status.context.startsWith('continuous-integration/travis-ci'))
+                await this._restartTravis(pr);
+        }
+    }
+
+    async _restartAllTasks (pr, { force, title }) {
+        const statusInfo = await this.github.getCombinedStatus(pr.repo, this.bot.name, pr.branchName);
+
+        if (!await this._canRestartTasks(pr, statusInfo, force))
+            return;
+
+        this._syncBranchWithCommit(pr.repo, pr.owner, pr.branchName, pr.sha, this._getTravisConf(title), pr.number);
+    }
+
     _getCommandHandler (message, title) {
         var name = this.bot.name;
 
         if (message.indexOf(`@${name}`) < 0)
             return null;
 
-        message = message.replace(`@${name}`, '').replace(/\s/g, '');
+        message = message.replace(`@${name}`, '').replace(/\s/g, '').replace(/^[\/\\]/, '');
 
-
-        var handlers = {
-            '\\retest': async pr => {
-                var statusInfo = await this.github.getCombinedStatus(pr.repo, name, pr.branchName);
-
-                if (statusInfo.statuses.some(status => status.state === 'pending') || pr.syncTimeout)
-                    return;
-
-                this._syncBranchWithCommit(pr.repo, pr.owner, pr.branchName, pr.sha, this._getTravisConf(title), pr.number);
-            }
-        };
-
-        return handlers[message] || null;
+        switch (message) {
+            case 'retest-all':
+            case 'restart-all':
+                return pr => this._restartAllTasks(pr, { title });
+            case 'retest':
+            case 'restart':
+                return pr => this._restartFailedTasks(pr, { title });
+            case 'retest-force-all':
+            case 'restart-force-all':
+            case 'retest-all-force':
+            case 'restart-all-force':
+                return pr => this._restartAllTasks(pr, { force: true, title });
+            case 'retest-force':
+            case 'restart-force':
+                return pr => this._restartFailedTasks(pr, { force: true, title });
+            default:
+                return null;
+        }
     }
 
     handle (message) {

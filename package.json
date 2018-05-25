@@ -1,6 +1,6 @@
 {
   "name": "github-build-bot",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "devDependencies": {
     "chai": "^3.3.0",
     "del": "^2.0.2",
@@ -18,7 +18,9 @@
     "github": "^2.6.0",
     "mkdirp": "^0.5.1",
     "os-family": "^1.0.0",
-    "promise": "^7.0.4"
+    "promise": "^7.0.4",
+    "request": "^2.87.0",
+    "request-promise": "^4.2.2"
   },
   "main": "lib/index",
   "bin": {
